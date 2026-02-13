@@ -1,0 +1,114 @@
+# WEIGHER SIMULATOR ONLY - Machine 1
+# Runs on port 50001
+
+# Configuration
+$weigherPort = 50001
+
+# Start Weigher Listener
+$weigherListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $weigherPort)
+$weigherListener.Start()
+Write-Host "⚖️ WEIGHER SIMULATOR listening on port $weigherPort..."
+Write-Host "Running on: $(hostname)"
+Write-Host "IP Address: $((Test-Connection -ComputerName (hostname) -Count 1).IPV4Address.IPAddressToString)"
+Write-Host ""
+
+# Bag sequence tracking
+$bagCounter = 1
+$random = New-Object System.Random
+
+function Send-WeigherData {
+    param($stream, $bagNumber)
+    
+    # Simulate weight variation
+    # Target: 25000g, Acceptable range: 25025-25175g
+    $weight = $random.Next(25020, 25180)
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    
+    # Generate machine timestamp
+    $machineTime = (Get-Date).AddMinutes(-2).ToString("yyyy-MM-ddTHH:mm:ss.fff+09:00")
+    $counterStr = $bagNumber.ToString().PadLeft(6, '0')
+    
+    # Send THREE lines for each measurement (real weigher format)
+    $data1 = "AN$([char]1)`r`n"
+    $data2 = "ANR$([char]1)  $([char]5)$([char]2) $([char]1)  $([char]1) $machineTime$($weight.ToString().PadLeft(5, ' '))$([char]1)$([char]1)   $counterStr$([char]2)001`r`n"
+    $data3 = "d$([char]1)     $weight                                                                                                         `r`n"
+    
+    $bytes1 = [System.Text.Encoding]::ASCII.GetBytes($data1)
+    $bytes2 = [System.Text.Encoding]::ASCII.GetBytes($data2)
+    $bytes3 = [System.Text.Encoding]::ASCII.GetBytes($data3)
+    
+    $stream.Write($bytes1, 0, $bytes1.Length)
+    Start-Sleep -Milliseconds 10
+    $stream.Write($bytes2, 0, $bytes2.Length)
+    Start-Sleep -Milliseconds 10
+    $stream.Write($bytes3, 0, $bytes3.Length)
+    $stream.Flush()
+    
+    Write-Host "⚖️ [$timestamp] Bag #$bagNumber - Weight: $weight g"
+    
+    # Log to file for debugging
+    $logEntry = "[$timestamp] Bag #$bagNumber - Weight: $weight g"
+    $logEntry | Out-File -FilePath "weigher_log.txt" -Append -Encoding UTF8
+    
+    return $weight
+}
+
+# Main simulation loop
+while ($true) {
+    Write-Host "🔄 Waiting for Python application to connect..."
+    
+    # Accept connection (this will block until Python connects)
+    $weigherClient = $weigherListener.AcceptTcpClient()
+    
+    Write-Host "✅ Python application connected to weigher!"
+    Write-Host "🚀 Starting weight simulation..."
+    Write-Host ""
+    
+    $weigherStream = $weigherClient.GetStream()
+    $reader = New-Object System.IO.StreamReader($weigherStream)
+    
+    try {
+        while ($weigherClient.Connected) {
+            # SIMULATE PRODUCTION LINE - Weight first
+            Write-Host "📦 --- PROCESSING BAG #$bagCounter ---"
+            
+            # Send weight data
+            $weight = Send-WeigherData -stream $weigherStream -bagNumber $bagCounter
+            
+            # Wait for next bag (simulating production line speed)
+            # In real scenario, metal detector is on separate machine with travel delay
+            $cycleTime = $random.Next(3, 6)  # 3-6 seconds between bags
+            
+            # Check if we should stop (client disconnected)
+            if ($weigherClient.Available -gt 0) {
+                $command = $reader.ReadLine()
+                if ($command -eq "STOP") {
+                    Write-Host "🛑 Received STOP command"
+                    break
+                }
+            }
+            
+            Write-Host "    ⏱️ Next bag in $cycleTime seconds..."
+            Write-Host ""
+            Start-Sleep -Seconds $cycleTime
+            
+            $bagCounter++
+            
+            # Reset counter if too high
+            if ($bagCounter -gt 9999) {
+                $bagCounter = 1
+            }
+        }
+    }
+    catch {
+        Write-Host "❌ Error: $($_.Exception.Message)"
+        Write-Host "Stack Trace: $($_.ScriptStackTrace)"
+    }
+    finally {
+        Write-Host "🔌 Client disconnected from weigher, waiting for new connection..."
+        $reader.Close()
+        $weigherStream.Close()
+        $weigherClient.Close()
+        Write-Host ""
+    }
+}
