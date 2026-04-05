@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs — contain runtime data, internal IPs, usernames
+logs/
+*.log
+
+# Environment secrets
+.env
+*.env
+
+# Distribution / build
+dist/
+build/
+*.spec
+output/
+
+# DB schema — contains internal server paths
+script.sql
+
+# OS
+.DS_Store
+Thumbs.db

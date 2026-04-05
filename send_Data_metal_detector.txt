@@ -1,0 +1,90 @@
+# METAL DETECTOR SIMULATOR
+# Runs on port 50001
+# Threshold: >= 100 = metal detected, 30% detection rate
+
+$metalDetectorPort = 50001
+$metalListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $metalDetectorPort)
+$metalListener.Start()
+Write-Host "METAL DETECTOR SIMULATOR listening on port $metalDetectorPort..."
+Write-Host "Running on: $(hostname)"
+Write-Host "IP Address: $((Test-Connection -ComputerName (hostname) -Count 1).IPV4Address.IPAddressToString)"
+Write-Host "Metal threshold: >= 100 = METAL DETECTED"
+Write-Host "Detection rate: ~30%"
+Write-Host ""
+
+$bagCounter = 1
+$random = New-Object System.Random
+
+function Send-MetalDetectorData {
+    param($stream, $bagNumber)
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    
+    # 30% chance of metal detection, threshold >= 100
+    if ($random.Next(0, 100) -lt 30) {
+        $firstValue = $random.Next(100, 25000)
+        $metal_status = 1
+        $status_text = "METAL DETECTED"
+    } else {
+        $firstValue = $random.Next(10, 99)
+        $metal_status = 0
+        $status_text = "NO METAL"
+    }
+    
+    $values = @($firstValue)
+    for ($i = 1; $i -lt 8; $i++) {
+        if ($metal_status -eq 1) { $values += $random.Next(100, 100000) }
+        else { $values += $random.Next(10, 99) }
+    }
+    $valuesString = ($values | ForEach-Object { $_.ToString().PadLeft(10) }) -join ' '
+    $param1 = if ($metal_status -eq 1) { $random.Next(40, 50) } else { $random.Next(-10, 10) }
+    $param2 = if ($metal_status -eq 1) { $random.Next(-50, -40) } else { $random.Next(70, 85) }
+    
+    $dataLine = "$timestamp - $valuesString  $($param1.ToString('0.00').PadLeft(5))  $($param2.ToString('0.00').PadLeft(5))   0.00   0.00     $($random.Next(690, 710))   $($random.Next(45, 47).ToString('0.0'))   $($random.Next(44, 46).ToString('0.0'))   $($random.Next(42, 44).ToString('0.0'))    $($random.Next(74, 76).ToString('0.00'))    $($random.Next(0, 1).ToString('0.00'))    `r`n"
+    
+    $dataBytes = [System.Text.Encoding]::ASCII.GetBytes($dataLine)
+    $stream.Write($dataBytes, 0, $dataBytes.Length)
+    $stream.Flush()
+    
+    Write-Host "[$timestamp] Bag #$bagNumber - First value: $firstValue - $status_text"
+    $logEntry = "[$timestamp] Bag #$bagNumber - First value: $firstValue - Status: $status_text"
+    $logEntry | Out-File -FilePath "metal_detector_log.txt" -Append -Encoding UTF8
+    return $metal_status
+}
+
+while ($true) {
+    Write-Host "Waiting for Python application to connect..."
+    $metalClient = $metalListener.AcceptTcpClient()
+    Write-Host "Python application connected to metal detector!"
+    Write-Host "Starting metal detection simulation..."
+    Write-Host ""
+    $metalStream = $metalClient.GetStream()
+    $reader = New-Object System.IO.StreamReader($metalStream)
+    try {
+        while ($metalClient.Connected) {
+            Write-Host "--- PROCESSING BAG #$bagCounter ---"
+            $travelTime = $random.Next(2, 4)
+            Write-Host "    Simulating bag travel from weigher ($travelTime seconds)..."
+            Start-Sleep -Seconds $travelTime
+            Send-MetalDetectorData -stream $metalStream -bagNumber $bagCounter
+            $cycleTime = $random.Next(4, 7)
+            if ($metalClient.Available -gt 0) {
+                $command = $reader.ReadLine()
+                if ($command -eq "STOP") { Write-Host "Received STOP command"; break }
+            }
+            Write-Host "    Next metal detection in $cycleTime seconds..."
+            Write-Host ""
+            Start-Sleep -Seconds $cycleTime
+            $bagCounter++
+            if ($bagCounter -gt 9999) { $bagCounter = 1 }
+        }
+    }
+    catch {
+        Write-Host "Error: $($_.Exception.Message)"
+        Write-Host "Stack Trace: $($_.ScriptStackTrace)"
+    }
+    finally {
+        Write-Host "Client disconnected, waiting for new connection..."
+        $reader.Close(); $metalStream.Close(); $metalClient.Close()
+        Write-Host ""
+    }
+}
