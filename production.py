@@ -78,6 +78,8 @@ class ProductionApp:
         self.w_queue = deque(); self.m_queue = deque(); self.db_ops = deque()
         self.next_log = 1
         self.stats = dict(total=0, passed=0, under=0, over=0, metal=0)
+        self.bag_seq = 0
+        self._wc_shown = set()
         self.last_match_debug = datetime.now()
         self.last_cleanup = datetime.now()
         self.info_lot = self.info_target = self.info_range = None
@@ -424,28 +426,47 @@ class ProductionApp:
                                      background=C["bg_card"], foreground=C["text3"])
         self.info_range.pack(side="left")
 
-        # ── Bag Log ───────────────────────────────────────────
-        log_outer = tk.Frame(parent, bg=C["bg_card"], padx=10, pady=8)
-        log_outer.pack(fill="both", expand=True)
-        tk.Label(log_outer, text="BAG LOG", font=("Segoe UI", 8, "bold"),
-                 bg=C["bg_card"], fg=C["accent"]).pack(anchor="w", pady=(0, 4))
-        tk.Frame(log_outer, height=1, bg=C["border"]).pack(fill="x", pady=(0, 4))
-        self.term = scrolledtext.ScrolledText(log_outer, wrap=tk.WORD, font=("Consolas", 10),
-            bg=C["terminal_bg"], fg=C["text2"], insertbackground=C["text2"],
-            relief="flat", borderwidth=0)
-        self.term.pack(fill="both", expand=True)
-        for tag, color in [("pass", C["green"]), ("under", C["orange"]), ("over", C["red"]),
-                           ("info", C["blue"]), ("hdr", C["accent"]), ("metal", "#ff3333")]:
-            self.term.tag_configure(tag, foreground=color)
+        # ── Dual Log Panels ───────────────────────────────────
+        log_row = tk.Frame(parent, bg=C["bg_dark"])
+        log_row.pack(fill="both", expand=True)
+
+        def _make_panel(parent, title):
+            f = tk.Frame(parent, bg=C["bg_card"], padx=8, pady=8)
+            f.pack(side="left", fill="both", expand=True, padx=(0, 2))
+            tk.Label(f, text=title, font=("Segoe UI", 8, "bold"),
+                     bg=C["bg_card"], fg=C["accent"]).pack(anchor="w", pady=(0, 3))
+            tk.Frame(f, height=1, bg=C["border"]).pack(fill="x", pady=(0, 3))
+            t = scrolledtext.ScrolledText(f, wrap=tk.WORD, font=("Consolas", 9),
+                bg=C["terminal_bg"], fg=C["text2"], insertbackground=C["text2"],
+                relief="flat", borderwidth=0)
+            t.pack(fill="both", expand=True)
+            for tag, color in [("pass", C["green"]), ("under", C["orange"]), ("over", C["red"]),
+                               ("info", C["blue"]), ("hdr", C["accent"]), ("metal", "#ff3333")]:
+                t.tag_configure(tag, foreground=color)
+            return t
+
+        self.term_wc = _make_panel(log_row, "WEIGHT CHECKER")
+        self.term_md = _make_panel(log_row, "METAL DETECTOR")
         self._tw("Waiting for production start...\n", "info")
-        self.term.config(state="disabled")
+        self.term_wc.config(state="disabled")
+        self.term_md.config(state="disabled")
+
+    def _tw_panel(self, term, text, tag=None):
+        term.config(state="normal")
+        term.insert(tk.END, text, tag) if tag else term.insert(tk.END, text)
+        lines = int(term.index("end-1c").split(".")[0])
+        if lines > 500: term.delete("1.0", f"{lines - 500}.0")
+        term.see(tk.END); term.config(state="disabled")
 
     def _tw(self, text, tag=None):
-        self.term.config(state="normal")
-        self.term.insert(tk.END, text, tag) if tag else self.term.insert(tk.END, text)
-        lines = int(self.term.index("end-1c").split(".")[0])
-        if lines > 500: self.term.delete("1.0", f"{lines - 500}.0")
-        self.term.see(tk.END); self.term.config(state="disabled")
+        self._tw_panel(self.term_wc, text, tag)
+        self._tw_panel(self.term_md, text, tag)
+
+    def _tw_wc(self, text, tag=None):
+        self._tw_panel(self.term_wc, text, tag)
+
+    def _tw_md(self, text, tag=None):
+        self._tw_panel(self.term_md, text, tag)
 
     def _add_dlg(self, field, table, label):
         dlg = tk.Toplevel(self.root); dlg.title(f"Add {label}"); dlg.geometry("360x180")
@@ -650,6 +671,7 @@ class ProductionApp:
                 if attempt < 1: time.sleep(1)
             else: messagebox.showwarning("Metal", "Metal detector failed. Continuing without.")
         self.w_queue.clear(); self.m_queue.clear(); self.db_ops.clear()
+        self.bag_seq = 0; self._wc_shown.clear()
         self.last_match_debug = self.last_cleanup = datetime.now()
         try: self.next_log = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
         except Exception: self.next_log = 1
@@ -692,11 +714,13 @@ class ProductionApp:
                         if weight is not None:
                             now_ts = datetime.now()
                             st = self._calc_status(weight)
+                            self.bag_seq += 1
                             wr = {
                                 'weight': weight, 'status': st,
                                 'timestamp': machine_ts or now_ts,
                                 'queue_time': now_ts,
-                                'log_id': self.next_log}
+                                'log_id': self.next_log,
+                                'bag_seq': self.bag_seq}
                             self.next_log += 1
                             if self.metal_ip and st == 1:
                                 # PASS bag with MD configured → queue for MD pairing
@@ -833,40 +857,55 @@ class ProductionApp:
         self.db_ops.clear()
 
     def _disp(self, wr, mr):
-        w, st, ts, lid = wr['weight'], wr['status'], wr['timestamp'], wr['log_id']
+        w, st, ts = wr['weight'], wr['status'], wr['timestamp']
         ms, mv = mr['status'], mr.get('value')
-        self.stats["total"] += 1
+        bseq = wr.get('bag_seq', 0)
+        is_new = bseq not in self._wc_shown
 
-        if ms == 1:
-            self.stats["metal"] += 1
-            s_txt, s_clr = "METAL!", "#ff3333"
-            m_txt, m_clr = f"METAL  ({mv})", "#ff3333"
-            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   METAL DETECTED\n"
-            tag = "metal"
-        elif st == 0:
-            self.stats["under"] += 1
-            s_txt, s_clr = "UNDER WT", C["orange"]
-            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
-            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   UNDER WEIGHT\n"
-            tag = "under"
-        elif st == 2:
-            self.stats["over"] += 1
-            s_txt, s_clr = "OVER WT", C["red"]
-            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
-            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   OVER WEIGHT\n"
-            tag = "over"
+        # ── WC panel: one entry per physical bag ──────────────
+        if is_new:
+            self._wc_shown.add(bseq)
+            self.stats["total"] += 1
+            if st == 0:
+                self.stats["under"] += 1
+                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  UNDER WEIGHT\n", "under")
+                s_txt, s_clr = "UNDER WT", C["orange"]
+            elif st == 2:
+                self.stats["over"] += 1
+                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  OVER WEIGHT\n", "over")
+                s_txt, s_clr = "OVER WT", C["red"]
+            else:
+                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  PASS\n", "pass")
+                s_txt, s_clr = "PASS", C["green"]
         else:
-            self.stats["passed"] += 1
-            s_txt, s_clr = "PASS", C["green"]
-            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
-            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   PASS\n"
-            tag = "pass"
+            # retry — WC panel already has this bag
+            s_txt, s_clr = ("METAL!", "#ff3333") if ms == 1 else ("PASS", C["green"])
 
+        # ── MD panel: every MD scan, retries clearly labelled ─
+        if ms is not None:
+            retry = not is_new
+            if ms == 1:
+                self.stats["metal"] += 1
+                sfx = "  ↩ RETRY" if retry else ""
+                self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  METAL ({mv}){sfx}\n", "metal")
+                s_txt, s_clr = "METAL!", "#ff3333"
+                m_txt, m_clr = f"METAL  ({mv})", "#ff3333"
+            else:
+                self.stats["passed"] += 1
+                sfx = "  CLEARED" if retry else ""
+                self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  No Metal   PASS{sfx}\n", "pass")
+                m_txt, m_clr = "No Metal", C["green"]
+        else:
+            # no MD (under/over or no MD configured)
+            if not self.metal_ip and is_new:
+                self.stats["passed"] += 1
+            m_txt, m_clr = "", C["text3"]
+
+        # ── Last bag card (always reflects most recent event) ─
         self.lbl_bag_status.config(text=s_txt, fg=s_clr)
         self.lbl_bag_weight.config(text=f"{w:,} g")
         self.lbl_bag_time.config(text=f"{ts:%H:%M:%S}")
         self.lbl_bag_metal.config(text=m_txt, fg=m_clr)
-        self._tw(log_line, tag)
         self._update_stats()
 
     def _update_stats(self):
