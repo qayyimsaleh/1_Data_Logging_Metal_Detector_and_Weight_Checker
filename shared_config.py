@@ -22,14 +22,16 @@ import os
 import re
 import socket
 import getpass
+import hashlib
+import threading
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 # ═══════════════════════════════════════════════════
 # CONSTANTS
 # ═══════════════════════════════════════════════════
-APP_VERSION = "2.0.0"
-APP_TITLE = "PanCen Production Management System"
+APP_VERSION = "2.1.0"
+APP_TITLE = "SNP Bagging Data Logging"
 
 CONN_STR = (
     "Driver={ODBC Driver 17 for SQL Server};"
@@ -47,6 +49,8 @@ ALLOWED_PROCEDURES = frozenset([
     "sp_GetSessionStats", "sp_GetRecentSessionReadings",
     "sp_GetTotalSessions", "sp_GetLastProductionId",
     "sp_GetCurrentSessionReadingCount", "sp_GetProductionIdByLot",
+    "sp_UpdateMachineConfig", "sp_EndProductionSession",
+    "sp_SetUserPassword",
 ])
 
 IP_REGEX = re.compile(
@@ -62,6 +66,13 @@ COLORS = {
     "blue": "#4ea8de", "text": "#e2e2e9", "text2": "#a0a0b8",
     "text3": "#6e6e87", "border": "#3d3d5c", "terminal_bg": "#0f0f1a",
 }
+
+# ═══════════════════════════════════════════════════
+# SECURITY HELPERS
+# ═══════════════════════════════════════════════════
+def hash_password(plain: str) -> str:
+    """SHA-256 hex digest. Passwords stored and compared as hashes only."""
+    return hashlib.sha256(plain.encode("utf-8")).hexdigest()
 
 # ═══════════════════════════════════════════════════
 # VALIDATION HELPERS
@@ -106,7 +117,7 @@ def make_logger(name: str) -> logging.Logger:
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s|%(levelname)-7s|%(name)s| %(message)s", "%Y-%m-%d %H:%M:%S")
     fh = RotatingFileHandler(
-        os.path.join("logs", f"{name}_{datetime.now():%Y%m%d_%H%M%S}.log"),
+        os.path.join("logs", f"{name}.log"),
         maxBytes=10*1024*1024, backupCount=5, encoding="utf-8")
     fh.setFormatter(fmt); fh.setLevel(logging.INFO)
     ch = logging.StreamHandler(); ch.setFormatter(fmt); ch.setLevel(logging.INFO)
@@ -122,6 +133,7 @@ class DB:
         self.log = logger
         self.conn = None
         self.cursor = None
+        self._lock = threading.RLock()
 
     def connect(self) -> bool:
         for i in range(3):
@@ -131,6 +143,7 @@ class DB:
                 self.log.info("DB connected")
                 return True
             except Exception as e:
+                self.last_error = str(e)
                 self.log.error(f"DB connect attempt {i+1}: {e}")
                 self.close()
         return False
@@ -161,36 +174,38 @@ class DB:
         """Execute stored procedure with whitelist check."""
         if name not in ALLOWED_PROCEDURES:
             raise ValueError(f"Blocked SP: {name}")
-        if not self.ensure():
-            raise ConnectionError("DB unavailable")
-        params = params or []
-        sql = f"EXEC {name} {','.join(['?']*len(params))}"
-        try:
-            self.cursor.execute(sql, params)
-            if fetch:
-                return self.cursor.fetchall()
-            self.conn.commit()
-            return True
-        except Exception as e:
-            self.log.error(f"SP error ({name}): {e}")
-            try: self.conn.rollback()
-            except Exception: pass
-            raise
+        with self._lock:
+            if not self.ensure():
+                raise ConnectionError("DB unavailable")
+            params = params or []
+            sql = f"EXEC {name} {','.join(['?']*len(params))}"
+            try:
+                self.cursor.execute(sql, params)
+                if fetch:
+                    return self.cursor.fetchall()
+                self.conn.commit()
+                return True
+            except Exception as e:
+                self.log.error(f"SP error ({name}): {e}")
+                try: self.conn.rollback()
+                except Exception: pass
+                raise
 
     def query(self, sql, params=None, fetch=True):
         """Execute parameterized query (for hardcoded trusted SQL only)."""
-        if not self.ensure():
-            raise ConnectionError("DB unavailable")
-        try:
-            self.cursor.execute(sql, params or [])
-            if fetch: return self.cursor.fetchall()
-            self.conn.commit()
-            return True
-        except Exception as e:
-            self.log.error(f"Query error: {e}")
-            try: self.conn.rollback()
-            except Exception: pass
-            raise
+        with self._lock:
+            if not self.ensure():
+                raise ConnectionError("DB unavailable")
+            try:
+                self.cursor.execute(sql, params or [])
+                if fetch: return self.cursor.fetchall()
+                self.conn.commit()
+                return True
+            except Exception as e:
+                self.log.error(f"Query error: {e}")
+                try: self.conn.rollback()
+                except Exception: pass
+                raise
 
 # ═══════════════════════════════════════════════════
 # DROPDOWN HELPERS

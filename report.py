@@ -15,6 +15,7 @@ Run: python report.py
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
+import threading
 from datetime import datetime
 
 try:
@@ -22,6 +23,12 @@ try:
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
+
+try:
+    from tkcalendar import DateEntry
+    HAS_CALENDAR = True
+except ImportError:
+    HAS_CALENDAR = False
 
 try:
     from reportlab.lib.pagesizes import A4, landscape
@@ -172,16 +179,28 @@ class ReportApp:
 
         ttk.Label(card, text="From", style="Norm.TLabel").pack(
             anchor="w", pady=(0, 3))
-        self.f_from = ttk.Entry(card, style="Dark.TEntry",
-                                font=("Segoe UI", 10))
-        self.f_from.insert(0, datetime.now().strftime("%Y-%m-01"))
+        if HAS_CALENDAR:
+            self.f_from = DateEntry(card, date_pattern="yyyy-mm-dd",
+                                    font=("Segoe UI", 10), width=16,
+                                    background=C["bg_input"], foreground=C["text"],
+                                    borderwidth=1)
+            self.f_from.set_date(datetime.now().replace(day=1))
+        else:
+            self.f_from = ttk.Entry(card, style="Dark.TEntry", font=("Segoe UI", 10))
+            self.f_from.insert(0, datetime.now().strftime("%Y-%m-01"))
         self.f_from.pack(fill="x", ipady=2, pady=(0, 8))
 
         ttk.Label(card, text="To", style="Norm.TLabel").pack(
             anchor="w", pady=(0, 3))
-        self.f_to = ttk.Entry(card, style="Dark.TEntry",
-                              font=("Segoe UI", 10))
-        self.f_to.insert(0, datetime.now().strftime("%Y-%m-%d"))
+        if HAS_CALENDAR:
+            self.f_to = DateEntry(card, date_pattern="yyyy-mm-dd",
+                                  font=("Segoe UI", 10), width=16,
+                                  background=C["bg_input"], foreground=C["text"],
+                                  borderwidth=1)
+            self.f_to.set_date(datetime.now())
+        else:
+            self.f_to = ttk.Entry(card, style="Dark.TEntry", font=("Segoe UI", 10))
+            self.f_to.insert(0, datetime.now().strftime("%Y-%m-%d"))
         self.f_to.pack(fill="x", ipady=2, pady=(0, 8))
 
         ttk.Label(card, text="Lot Number", style="Norm.TLabel").pack(
@@ -209,9 +228,10 @@ class ReportApp:
                                 font=("Segoe UI", 9))
             rb.pack(anchor="w", pady=1)
 
-        ttk.Button(card, text="Generate Report",
-                   command=self._generate,
-                   style="Green.TButton").pack(fill="x", pady=(14, 4))
+        self.btn_generate = ttk.Button(card, text="Generate Report",
+                                        command=self._generate,
+                                        style="Green.TButton")
+        self.btn_generate.pack(fill="x", pady=(14, 4))
         ttk.Button(card, text="Export Excel",
                    command=self._export_excel,
                    style="Accent.TButton").pack(fill="x", pady=4)
@@ -245,45 +265,76 @@ class ReportApp:
 
     # ═══════════════ GENERATE ═══════════════
     def _generate(self):
-        try:
-            machine = self.f_machine.get()
-            machine = "" if machine == "All Machines" else machine
-            params = [
-                machine, self.f_from.get().strip(),
-                self.f_to.get().strip(), self.f_lot.get().strip(),
-                self.f_batch.get().strip(), self.f_type.get()
-            ]
-            results = self.db.call_sp("sp_GetProductionReport", params,
-                                       fetch=True)
-            if not results:
-                messagebox.showinfo("No Data", "No records found.")
-                return
+        from_date = self.f_from.get().strip()
+        to_date = self.f_to.get().strip()
+        for d in [from_date, to_date]:
+            if d:
+                try:
+                    datetime.strptime(d, "%Y-%m-%d")
+                except ValueError:
+                    messagebox.showwarning("Validation",
+                        f"Invalid date: {d!r}\nUse YYYY-MM-DD format.")
+                    return
 
-            rtype = self.f_type.get()
-            # FIX: Convert pyodbc Row objects to plain lists
-            rows = [list(r) for r in results]
+        machine = self.f_machine.get()
+        machine = "" if machine == "All Machines" else machine
+        params = [machine, from_date, to_date,
+                  self.f_lot.get().strip(), self.f_batch.get().strip(),
+                  self.f_type.get()]
+        rtype = self.f_type.get()
+        mach_label = machine or "All"
 
-            # Dedup for detailed by log_id
-            if rtype == "detailed":
-                seen = set()
-                unique = []
-                for r in rows:
-                    lid = r[0]
-                    if lid not in seen:
-                        seen.add(lid)
-                        unique.append(r)
-                rows = unique
+        self.res_header.config(text="Generating...", foreground=C["orange"])
+        self.btn_generate.configure(state="disabled")
 
+        def _run():
+            try:
+                results = self.db.call_sp("sp_GetProductionReport", params, fetch=True)
+                if not results:
+                    self.root.after(0, _no_data)
+                    return
+                rows = [list(r) for r in results]
+                if rtype == "detailed":
+                    seen = set(); unique = []
+                    for r in rows:
+                        if r[0] not in seen:
+                            seen.add(r[0]); unique.append(r)
+                    rows = unique
+                self.root.after(0, lambda r=rows: _done(r))
+            except Exception as e:
+                self.log.error(f"Generate error: {e}")
+                err = str(e)
+                self.root.after(0, lambda: _error(err))
+
+        def _no_data():
+            self.res_header.config(text="No records found.", foreground=C["text3"])
+            self.btn_generate.configure(state="normal")
+            messagebox.showinfo("No Data", "No records found.")
+
+        def _done(rows):
             self.report_data = rows
             self.report_type = rtype
+            ROW_WARN = 5000
+            if len(rows) > ROW_WARN:
+                if not messagebox.askyesno("Large Dataset",
+                        f"{len(rows)} records returned.\n"
+                        f"Displaying all may be slow. Continue?"):
+                    self.res_header.config(text="Cancelled.", foreground=C["text3"])
+                    self.btn_generate.configure(state="normal")
+                    return
             self._populate_tree(rows, rtype)
             label = "Detailed" if rtype == "detailed" else "Summary"
-            mach_label = machine or "All"
             self.res_header.config(
-                text=f"{len(rows)} records | {label} | Machine: {mach_label}")
-        except Exception as e:
-            self.log.error(f"Generate error: {e}")
-            messagebox.showerror("Error", str(e))
+                text=f"{len(rows)} records | {label} | Machine: {mach_label}",
+                foreground=C["accent"])
+            self.btn_generate.configure(state="normal")
+
+        def _error(err):
+            self.res_header.config(text="Error generating report.", foreground=C["red"])
+            self.btn_generate.configure(state="normal")
+            messagebox.showerror("Error", err)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _populate_tree(self, rows, rtype):
         for item in self.tree.get_children():
@@ -349,10 +400,14 @@ class ReportApp:
 
     def _clear_filters(self):
         self.f_machine.set("All Machines")
-        self.f_from.delete(0, tk.END)
-        self.f_from.insert(0, datetime.now().strftime("%Y-%m-01"))
-        self.f_to.delete(0, tk.END)
-        self.f_to.insert(0, datetime.now().strftime("%Y-%m-%d"))
+        if HAS_CALENDAR:
+            self.f_from.set_date(datetime.now().replace(day=1))
+            self.f_to.set_date(datetime.now())
+        else:
+            self.f_from.delete(0, tk.END)
+            self.f_from.insert(0, datetime.now().strftime("%Y-%m-01"))
+            self.f_to.delete(0, tk.END)
+            self.f_to.insert(0, datetime.now().strftime("%Y-%m-%d"))
         self.f_lot.delete(0, tk.END)
         self.f_batch.delete(0, tk.END)
 
@@ -763,9 +818,34 @@ class ReportApp:
         self.root.destroy()
 
 
+def _show_splash(root):
+    s = tk.Toplevel(root)
+    s.overrideredirect(True)
+    s.configure(bg=C["bg_dark"])
+    sw, sh = s.winfo_screenwidth(), s.winfo_screenheight()
+    w, h = 440, 190
+    s.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+    s.lift(); s.attributes("-topmost", True)
+    tk.Label(s, text=APP_TITLE, bg=C["bg_dark"], fg=C["text"],
+             font=("Segoe UI", 14, "bold")).pack(pady=(40, 6))
+    tk.Label(s, text=f"v{APP_VERSION}", bg=C["bg_dark"], fg=C["text2"],
+             font=("Segoe UI", 9)).pack()
+    tk.Label(s, text="Starting, please wait...", bg=C["bg_dark"], fg=C["text3"],
+             font=("Segoe UI", 9)).pack(pady=(8, 0))
+    pb = ttk.Progressbar(s, mode="indeterminate", length=320)
+    pb.pack(pady=16)
+    pb.start(10)
+    s.update()
+    return s
+
+
 def main():
     root = tk.Tk()
+    root.withdraw()
+    splash = _show_splash(root)
     ReportApp(root)
+    splash.destroy()
+    root.deiconify()
     root.mainloop()
 
 

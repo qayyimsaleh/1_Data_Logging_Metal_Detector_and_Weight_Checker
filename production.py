@@ -13,12 +13,13 @@ FIXES:
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import threading, time, socket, re, os
+from collections import deque
 from datetime import datetime, timedelta
 
 from shared_config import (
     APP_TITLE, APP_VERSION, COLORS, DB, make_logger,
     get_local_ip, get_dropdown, add_dropdown,
-    validate_ip, validate_port, sanitize,
+    validate_ip, validate_port, sanitize, hash_password,
 )
 
 C = COLORS
@@ -60,7 +61,7 @@ class ProductionApp:
         self.log = make_logger("production")
         self.db = DB(self.log)
         if not self.db.connect():
-            messagebox.showerror("DB Error", "Cannot connect to database.")
+            messagebox.showerror("DB Error", f"Cannot connect to database.\n\n{getattr(self.db, 'last_error', '')}")
         self.pc_ip = get_local_ip()
         self.machine_name = self.pc_ip
         self.weigher_ip = "192.168.0.100"
@@ -71,13 +72,15 @@ class ProductionApp:
         self.m_sock = None; self.m_reader = None
         self.running = False; self.thread = None
         self.stop_evt = threading.Event()
+        self.pause_evt = threading.Event()  # Set = paused, Clear = running
         self.user = self.prod_id = self.session_data = self.screen = None
         self.entries = {}
-        self.w_queue = []; self.m_queue = []; self.db_ops = []
-        self.next_log = 1; self.live_data = []
+        self.w_queue = deque(); self.m_queue = deque(); self.db_ops = deque()
+        self.next_log = 1
         self.stats = dict(total=0, passed=0, under=0, over=0, metal=0)
         self.last_match_debug = datetime.now()
         self.last_cleanup = datetime.now()
+        self.info_lot = self.info_target = self.info_range = None
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         w, h = min(1400, sw - 60), min(850, sh - 80)
         root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
@@ -177,7 +180,7 @@ class ProductionApp:
         u, p = sanitize(self._login_user.get(), 50), self._login_pass.get()
         if not u or not p: messagebox.showwarning("Login", "Enter both fields."); return
         try:
-            r = self.db.call_sp("sp_VerifyUser", [u, p], fetch=True)
+            r = self.db.call_sp("sp_VerifyUser", [u, hash_password(p)], fetch=True)
             if r:
                 self.user = u; self.root.unbind("<Return>"); self._show_main()
             else:
@@ -223,10 +226,23 @@ class ProductionApp:
 
     def _launch_reports(self):
         import subprocess, sys
-        d = os.path.dirname(os.path.abspath(__file__))
-        rp = os.path.join(d, "report.py")
-        if os.path.exists(rp): subprocess.Popen([sys.executable, rp])
-        else: messagebox.showwarning("Not Found", f"report.py not found in:\n{d}")
+        if getattr(sys, 'frozen', False):
+            # PyInstaller exe — look for report.exe alongside main exe
+            d = os.path.dirname(sys.executable)
+            rp = os.path.join(d, "report.exe")
+            if os.path.exists(rp):
+                subprocess.Popen([rp])
+            else:
+                messagebox.showwarning("Not Found",
+                    "report.exe not found next to production.exe.\n"
+                    "Build report.py separately with PyInstaller.")
+        else:
+            d = os.path.dirname(os.path.abspath(__file__))
+            rp = os.path.join(d, "report.py")
+            if os.path.exists(rp):
+                subprocess.Popen([sys.executable, rp])
+            else:
+                messagebox.showwarning("Not Found", f"report.py not found in:\n{d}")
 
     # ═══════════════ CONFIG ═══════════════
     def _show_config(self):
@@ -267,12 +283,15 @@ class ProductionApp:
         if not ip: lbl.config(text="No IP", foreground=C["text3"]); return
         if not validate_ip(ip): lbl.config(text="Bad IP", foreground=C["red"]); return
         if not pt: lbl.config(text="Bad port", foreground=C["red"]); return
-        lbl.config(text="...", foreground=C["orange"]); self.root.update()
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(5); s.connect((ip, pt)); s.close()
-            lbl.config(text="OK", foreground=C["green"])
-        except Exception: lbl.config(text="Fail", foreground=C["red"])
+        lbl.config(text="...", foreground=C["orange"])
+        def _do():
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5); s.connect((ip, pt)); s.close()
+                self.root.after(0, lambda: lbl.config(text="OK", foreground=C["green"]))
+            except Exception:
+                self.root.after(0, lambda: lbl.config(text="Fail", foreground=C["red"]))
+        threading.Thread(target=_do, daemon=True).start()
 
     def _save_cfg(self):
         ip, pt = self._cfg_wip.get().strip(), validate_port(self._cfg_wpt.get())
@@ -284,7 +303,13 @@ class ProductionApp:
             if not validate_ip(mip): messagebox.showwarning("Validation", "Invalid metal IP"); return
             if not mpt: messagebox.showwarning("Validation", "Invalid metal port"); return
             self.metal_ip, self.metal_port = mip, mpt
-        else: self.metal_ip = None
+        else:
+            self.metal_ip = None
+        try:
+            self.db.call_sp("sp_UpdateMachineConfig", [self.pc_ip, self.weigher_ip, self.metal_ip])
+            self.log.info(f"Machine config saved: weigher={self.weigher_ip} metal={self.metal_ip}")
+        except Exception as e:
+            self.log.warning(f"Config DB save failed (in-memory only): {e}")
         self._show_main()
 
     # ═══════════════ PRODUCTION SCREEN ═══════════════
@@ -360,6 +385,17 @@ class ProductionApp:
             ttk.Label(f, text=l, font=("Segoe UI", 8), background=C["bg_card"], foreground=C["text3"]).pack()
             lb = ttk.Label(f, text="0", font=("Segoe UI", 14, "bold"), background=C["bg_card"], foreground=clr)
             lb.pack(); self.st_lbl[k] = lb
+        si = ttk.Frame(parent, style="Card.TFrame"); si.configure(padding=(14, 6))
+        si.pack(fill="x", pady=(0, 6))
+        self.info_lot = ttk.Label(si, text="Lot: —", font=("Segoe UI", 9, "bold"),
+                                   background=C["bg_card"], foreground=C["text3"])
+        self.info_lot.pack(side="left", padx=(0, 20))
+        self.info_target = ttk.Label(si, text="Target: —", font=("Segoe UI", 9),
+                                      background=C["bg_card"], foreground=C["text3"])
+        self.info_target.pack(side="left", padx=(0, 20))
+        self.info_range = ttk.Label(si, text="Range: —", font=("Segoe UI", 9),
+                                     background=C["bg_card"], foreground=C["text3"])
+        self.info_range.pack(side="left")
         tc = self._card(parent, "Live Data"); tc.pack(fill="both", expand=True)
         self.term = scrolledtext.ScrolledText(tc, wrap=tk.WORD, font=("Consolas", 9),
             bg=C["terminal_bg"], fg=C["green"], insertbackground=C["green"], relief="flat", borderwidth=0)
@@ -437,10 +473,14 @@ class ProductionApp:
                 int(self.session_data["under_limit"]), dt, sanitize(self.user, 10), self.machine_name]
             self.db.call_sp("sp_InsertUpdateProductionSession", pd_list)
             if not self._start_mon(): return
-            self.running = True; self.stats = dict(total=0, passed=0, under=0, over=0, metal=0); self.live_data = []
+            self.running = True; self.stats = dict(total=0, passed=0, under=0, over=0, metal=0)
             self._toggle_form(False); self.btn_go.configure(state="disabled")
             self.btn_stp.configure(state="normal"); self.btn_chk.configure(state="disabled")
             self.lbl_st.config(text="RUNNING", foreground=C["red"])
+            if self.info_lot:
+                self.info_lot.config(text=f"Lot: {self.session_data['lot_no']}", foreground=C["accent"])
+                self.info_target.config(text=f"Target: {self.session_data['net_weight']}g", foreground=C["text2"])
+                self.info_range.config(text=f"Range: {self.session_data['under_limit']} - {self.session_data['over_limit']}g", foreground=C["text2"])
             self._tw(f"\n{'='*42}\n", "hdr")
             self._tw(f"STARTED | ID:{self.prod_id} | {dt:%H:%M:%S}\n", "hdr")
             self._tw(f"Lot: {self.session_data['lot_no']} | Machine: {self.machine_name}\n", "info")
@@ -448,15 +488,24 @@ class ProductionApp:
         except Exception as e:
             self.log.error(f"Start error: {e}"); messagebox.showerror("Error", str(e))
 
-    def _stop(self):
+    def _stop(self, confirm=True):
         if not self.running: return
-        if not messagebox.askyesno("Confirm", "Stop production?"): return
+        if confirm and not messagebox.askyesno("Confirm", "Stop production?"): return
         self._stop_mon(); self.running = False; self._toggle_form(True)
         self.btn_go.configure(state="normal"); self.btn_stp.configure(state="disabled"); self.btn_chk.configure(state="normal")
         self.lbl_st.config(text="STOPPED", foreground=C["text3"])
+        end_dt = datetime.now()
+        try:
+            self.db.call_sp("sp_EndProductionSession", [self.prod_id, end_dt, sanitize(self.user, 10)])
+        except Exception as e:
+            self.log.warning(f"Session end record failed: {e}")
         self._tw(f"\n{'='*42}\n", "hdr")
-        self._tw(f"STOPPED | {datetime.now():%H:%M:%S} | Total: {self.stats['total']}\n", "hdr")
+        self._tw(f"STOPPED | {end_dt:%H:%M:%S} | Total: {self.stats['total']}\n", "hdr")
         self._tw(f"{'='*42}\n", "hdr")
+        if self.info_lot:
+            self.info_lot.config(text="Lot: —", foreground=C["text3"])
+            self.info_target.config(text="Target: —", foreground=C["text3"])
+            self.info_range.config(text="Range: —", foreground=C["text3"])
 
     def _toggle_form(self, on):
         st = "readonly" if on else "disabled"
@@ -469,6 +518,10 @@ class ProductionApp:
             self.btn_stp.configure(state="normal"); self.btn_chk.configure(state="disabled")
             self.lbl_st.config(text="RUNNING", foreground=C["red"])
             self.lbl_id.config(text=f"ID: {self.prod_id} (active)", foreground=C["red"])
+            if self.info_lot and self.session_data:
+                self.info_lot.config(text=f"Lot: {self.session_data['lot_no']}", foreground=C["accent"])
+                self.info_target.config(text=f"Target: {self.session_data['net_weight']}g", foreground=C["text2"])
+                self.info_range.config(text=f"Range: {self.session_data['under_limit']} - {self.session_data['over_limit']}g", foreground=C["text2"])
 
     # ═══════════════════════════════════════════════════
     # MONITORING ENGINE
@@ -565,16 +618,22 @@ class ProductionApp:
         self.last_match_debug = self.last_cleanup = datetime.now()
         try: self.next_log = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
         except Exception: self.next_log = 1
+        self.pause_evt.clear()
         self.stop_evt.clear()
         self.thread = threading.Thread(target=self._mon_loop, daemon=True, name="ProductionMonitor")
         self.thread.start(); self.log.info("Monitoring thread started"); return True
 
     def _stop_mon(self):
         self.stop_evt.set()
-        # Wait for thread to finish
+        self.pause_evt.clear()  # Unblock thread if it's waiting in pause loop
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=3)
-        # Final flush
+            if self.thread.is_alive():
+                # Thread didn't stop in time — skip final flush to avoid race on db_ops
+                self.log.warning("Monitor thread did not stop within 3s — skipping final flush")
+                self._disc_w(); self._disc_m()
+                return
+        # Thread confirmed dead — safe to do final flush on main thread
         self._match(); self._flush()
         self._disc_w(); self._disc_m()
         self.w_queue.clear(); self.m_queue.clear(); self.db_ops.clear()
@@ -588,6 +647,8 @@ class ProductionApp:
 
         while not self.stop_evt.is_set():
             try:
+                if self.pause_evt.is_set():
+                    time.sleep(0.1); continue
                 # --- Read weigher ---
                 if self.w_sock and self.w_reader:
                     try:
@@ -595,13 +656,26 @@ class ProductionApp:
                         weight, machine_ts = self._parse_weigher(line)
                         if weight is not None:
                             now_ts = datetime.now()
-                            self.w_queue.append({
-                                'weight': weight, 'status': self._calc_status(weight),
-                                'timestamp': machine_ts or now_ts,  # DB gets machine time
-                                'queue_time': now_ts,               # Matching uses wall clock
-                                'log_id': self.next_log})
+                            st = self._calc_status(weight)
+                            wr = {
+                                'weight': weight, 'status': st,
+                                'timestamp': machine_ts or now_ts,
+                                'queue_time': now_ts,
+                                'log_id': self.next_log}
                             self.next_log += 1
-                            self.log.info(f"W: {weight}g at {(machine_ts or now_ts):%H:%M:%S} (Q:{len(self.w_queue)})")
+                            if self.metal_ip and st == 1:
+                                # PASS bag with MD configured → queue for MD pairing
+                                self.w_queue.append(wr)
+                                self.log.info(f"W: {weight}g PASS → queued for MD (Q:{len(self.w_queue)})")
+                            else:
+                                # FAIL weight → log directly, bag never reaches MD
+                                # No metal_ip → log directly regardless of status
+                                mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
+                                self.db_ops.append((wr, mr))
+                                self.root.after(0, self._disp, wr, mr)
+                                s = 'PASS' if st == 1 else ('UNDER' if st == 0 else 'OVER')
+                                self.log.info(f"W: {weight}g {s} → direct log")
+                                pass
                     except socket.timeout:
                         pass  # Normal - no data right now
                     except (ConnectionError, OSError) as e:
@@ -656,17 +730,35 @@ class ProductionApp:
         matches = 0
         if self.metal_ip:
             while self.w_queue and self.m_queue:
-                wr, mr = self.w_queue.pop(0), self.m_queue.pop(0)
+                wr, mr = self.w_queue.popleft(), self.m_queue.popleft()
                 self.db_ops.append((wr, mr))
-                self.root.after(0, self._disp, wr, mr); matches += 1
+                self.root.after(0, self._disp, wr, mr)
+                if mr['status'] == 1:
+                    # MD failed → operator retries same bag through MD.
+                    # Put weight back at front with a new log_id so each
+                    # attempt gets its own audit row (same weight, new ID).
+                    # NOTE: if other bags reach MD before the retry (long gap),
+                    # those bags will consume this weight entry instead — FIFO
+                    # aggregate counts stay correct even if per-bag pairing drifts.
+                    retry_wr = dict(wr)
+                    retry_wr['log_id'] = self.next_log
+                    self.next_log += 1
+                    self.w_queue.appendleft(retry_wr)
+                    self.log.info(f"MD fail log_id={wr['log_id']}, retry→log_id={retry_wr['log_id']}")
+                    pass
+                matches += 1
         else:
+            # Safety net: w_queue only has items here if metal_ip was cleared
+            # mid-session; normally it's empty because _mon_loop logs directly.
             while self.w_queue:
-                wr = self.w_queue.pop(0)
-                mr = {'status': 0, 'value': None, 'timestamp': wr['timestamp']}
+                wr = self.w_queue.popleft()
+                mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
                 self.db_ops.append((wr, mr))
                 self.root.after(0, self._disp, wr, mr); matches += 1
         if matches > 0:
-            self.log.info(f"Matched {matches} reading(s)"); self._flush()
+            self.log.info(f"Matched {matches} reading(s)")
+        if self.db_ops:
+            self._flush()
 
     def _cleanup_old(self):
         """Clean up old readings. NEVER force-match during active production.
@@ -685,7 +777,8 @@ class ProductionApp:
         # Only cleanup when production is STOPPED
         for name, q in [("W", self.w_queue), ("M", self.m_queue)]:
             before = len(q)
-            q[:] = [r for r in q if (now - r.get('queue_time', r['timestamp'])).total_seconds() <= 3600]
+            keep = [r for r in q if (now - r.get('queue_time', r['timestamp'])).total_seconds() <= 3600]
+            q.clear(); q.extend(keep)
             rem = before - len(q)
             if rem > 0: self.log.info(f"Cleaned {rem} old {name} readings")
 
@@ -722,8 +815,6 @@ class ProductionApp:
             mv_str = f"({mv})" if mv is not None else ""
             self._tw(f"[{ts:%H:%M:%S}] #{lid:04d}  {w:>6d}g  PASS   OK{mv_str}\n", "pass")
 
-        self.live_data.append(dict(ts=ts, weight=w, status=st, metal=ms, metal_value=mv, lid=lid))
-        if len(self.live_data) > 2000: self.live_data = self.live_data[-2000:]
         self._update_stats()
 
     def _update_stats(self):
@@ -736,18 +827,56 @@ class ProductionApp:
     # ═══════════════ LIFECYCLE ═══════════════
     def _logout(self):
         if self.running:
-            if not messagebox.askyesno("Running", "Stop production and logout?"): return
+            if not messagebox.askyesno("Logout", "Stop production and logout?"): return
             self._stop_mon(); self.running = False
-        if messagebox.askyesno("Logout", "Logout?"):
+            try:
+                self.db.call_sp("sp_EndProductionSession",
+                                [self.prod_id, datetime.now(), sanitize(self.user, 10)])
+            except Exception as e:
+                self.log.warning(f"Session end record failed on logout: {e}")
+            self.user = self.prod_id = None; self._show_login()
+        elif messagebox.askyesno("Logout", "Logout?"):
             self.user = self.prod_id = None; self._show_login()
 
     def _on_close(self):
-        if self.running: self._stop_mon(); self.running = False
+        if self.running:
+            self._stop_mon(); self.running = False
+            try:
+                self.db.call_sp("sp_EndProductionSession",
+                                [self.prod_id, datetime.now(), sanitize(self.user, 10)])
+            except Exception: pass
         self.db.close(); self.root.destroy()
 
 
+def _show_splash(root):
+    s = tk.Toplevel(root)
+    s.overrideredirect(True)
+    s.configure(bg=C["bg_dark"])
+    sw, sh = s.winfo_screenwidth(), s.winfo_screenheight()
+    w, h = 440, 190
+    s.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+    s.lift(); s.attributes("-topmost", True)
+    tk.Label(s, text=APP_TITLE, bg=C["bg_dark"], fg=C["text"],
+             font=("Segoe UI", 14, "bold")).pack(pady=(40, 6))
+    tk.Label(s, text=f"v{APP_VERSION}", bg=C["bg_dark"], fg=C["text2"],
+             font=("Segoe UI", 9)).pack()
+    tk.Label(s, text="Starting, please wait...", bg=C["bg_dark"], fg=C["text3"],
+             font=("Segoe UI", 9)).pack(pady=(8, 0))
+    pb = ttk.Progressbar(s, mode="indeterminate", length=320)
+    pb.pack(pady=16)
+    pb.start(10)
+    s.update()
+    return s
+
+
 def main():
-    root = tk.Tk(); ProductionApp(root); root.mainloop()
+    root = tk.Tk()
+    root.withdraw()
+    splash = _show_splash(root)
+    ProductionApp(root)
+    splash.destroy()
+    root.deiconify()
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
