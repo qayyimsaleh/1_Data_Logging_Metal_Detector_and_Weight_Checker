@@ -80,6 +80,7 @@ class ProductionApp:
         self.stats = dict(total=0, passed=0, under=0, over=0, metal=0)
         self.bag_seq = 0
         self._wc_shown = set()
+        self._md_shown = set()
         self.last_match_debug = datetime.now()
         self.last_cleanup = datetime.now()
         self.info_lot = self.info_target = self.info_range = None
@@ -671,7 +672,7 @@ class ProductionApp:
                 if attempt < 1: time.sleep(1)
             else: messagebox.showwarning("Metal", "Metal detector failed. Continuing without.")
         self.w_queue.clear(); self.m_queue.clear(); self.db_ops.clear()
-        self.bag_seq = 0; self._wc_shown.clear()
+        self.bag_seq = 0; self._wc_shown.clear(); self._md_shown.clear()
         self.last_match_debug = self.last_cleanup = datetime.now()
         try: self.next_log = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
         except Exception: self.next_log = 1
@@ -722,19 +723,18 @@ class ProductionApp:
                                 'log_id': self.next_log,
                                 'bag_seq': self.bag_seq}
                             self.next_log += 1
+                            self.root.after(0, self._disp_wc, dict(wr))
                             if self.metal_ip and st == 1:
                                 # PASS bag with MD configured → queue for MD pairing
                                 self.w_queue.append(wr)
                                 self.log.info(f"W: {weight}g PASS → queued for MD (Q:{len(self.w_queue)})")
                             else:
-                                # FAIL weight → log directly, bag never reaches MD
-                                # No metal_ip → log directly regardless of status
+                                # FAIL weight or no MD → log directly
                                 mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
                                 self.db_ops.append((wr, mr))
-                                self.root.after(0, self._disp, wr, mr)
+                                self.root.after(0, self._disp_md, dict(wr), mr)
                                 s = 'PASS' if st == 1 else ('UNDER' if st == 0 else 'OVER')
                                 self.log.info(f"W: {weight}g {s} → direct log")
-                                pass
                     except socket.timeout:
                         pass  # Normal - no data right now
                     except (ConnectionError, OSError) as e:
@@ -795,7 +795,7 @@ class ProductionApp:
             while self.w_queue and self.m_queue:
                 wr, mr = self.w_queue.popleft(), self.m_queue.popleft()
                 self.db_ops.append((wr, mr))
-                self.root.after(0, self._disp, wr, mr)
+                self.root.after(0, self._disp_md, wr, mr)
                 if mr['status'] == 1:
                     # MD failed → operator retries same bag through MD.
                     # Put weight back at front with a new log_id so each
@@ -817,7 +817,7 @@ class ProductionApp:
                 wr = self.w_queue.popleft()
                 mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
                 self.db_ops.append((wr, mr))
-                self.root.after(0, self._disp, wr, mr); matches += 1
+                self.root.after(0, self._disp_md, wr, mr); matches += 1
         if matches > 0:
             self.log.info(f"Matched {matches} reading(s)")
         if self.db_ops:
@@ -856,56 +856,51 @@ class ProductionApp:
             except Exception as e: self.log.error(f"DB flush: {e}")
         self.db_ops.clear()
 
-    def _disp(self, wr, mr):
+    def _disp_wc(self, wr):
+        """Called immediately when WC reads a bag. Updates WC panel and last-bag card."""
         w, st, ts = wr['weight'], wr['status'], wr['timestamp']
-        ms, mv = mr['status'], mr.get('value')
         bseq = wr.get('bag_seq', 0)
-        is_new = bseq not in self._wc_shown
-
-        # ── WC panel: one entry per physical bag ──────────────
-        if is_new:
-            self._wc_shown.add(bseq)
-            self.stats["total"] += 1
-            if st == 0:
-                self.stats["under"] += 1
-                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  UNDER WEIGHT\n", "under")
-                s_txt, s_clr = "UNDER WT", C["orange"]
-            elif st == 2:
-                self.stats["over"] += 1
-                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  OVER WEIGHT\n", "over")
-                s_txt, s_clr = "OVER WT", C["red"]
-            else:
-                self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  PASS\n", "pass")
-                s_txt, s_clr = "PASS", C["green"]
+        self._wc_shown.add(bseq)
+        self.stats["total"] += 1
+        if st == 0:
+            self.stats["under"] += 1
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  UNDER WEIGHT\n", "under")
+            self.lbl_bag_status.config(text="UNDER WT", fg=C["orange"])
+        elif st == 2:
+            self.stats["over"] += 1
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  OVER WEIGHT\n", "over")
+            self.lbl_bag_status.config(text="OVER WT", fg=C["red"])
         else:
-            # retry — WC panel already has this bag
-            s_txt, s_clr = ("METAL!", "#ff3333") if ms == 1 else ("PASS", C["green"])
-
-        # ── MD panel: every MD scan, retries clearly labelled ─
-        if ms is not None:
-            retry = not is_new
-            if ms == 1:
-                self.stats["metal"] += 1
-                sfx = "  ↩ RETRY" if retry else ""
-                self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  METAL ({mv}){sfx}\n", "metal")
-                s_txt, s_clr = "METAL!", "#ff3333"
-                m_txt, m_clr = f"METAL  ({mv})", "#ff3333"
-            else:
-                self.stats["passed"] += 1
-                sfx = "  CLEARED" if retry else ""
-                self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  No Metal   PASS{sfx}\n", "pass")
-                m_txt, m_clr = "No Metal", C["green"]
-        else:
-            # no MD (under/over or no MD configured)
-            if not self.metal_ip and is_new:
-                self.stats["passed"] += 1
-            m_txt, m_clr = "", C["text3"]
-
-        # ── Last bag card (always reflects most recent event) ─
-        self.lbl_bag_status.config(text=s_txt, fg=s_clr)
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  PASS\n", "pass")
+            self.lbl_bag_status.config(text="PASS", fg=C["green"])
         self.lbl_bag_weight.config(text=f"{w:,} g")
         self.lbl_bag_time.config(text=f"{ts:%H:%M:%S}")
-        self.lbl_bag_metal.config(text=m_txt, fg=m_clr)
+        self.lbl_bag_metal.config(text="", fg=C["text3"])
+        self._update_stats()
+
+    def _disp_md(self, wr, mr):
+        """Called when MD pairs with a WC bag. Updates MD panel only."""
+        bseq = wr.get('bag_seq', 0)
+        ms, mv = mr['status'], mr.get('value')
+        ts = mr.get('timestamp', datetime.now())
+        if ms == 1:
+            self.stats["metal"] += 1
+            sfx = "  ↩ RETRY" if bseq in self._md_shown else ""
+            self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  METAL ({mv}){sfx}\n", "metal")
+            self.lbl_bag_status.config(text="METAL!", fg="#ff3333")
+            self.lbl_bag_metal.config(text=f"METAL ({mv})", fg="#ff3333")
+            self._md_shown.add(bseq)
+        elif ms == 0:
+            self.stats["passed"] += 1
+            sfx = "  CLEARED" if bseq in self._md_shown else ""
+            self._tw_md(f"  {ts:%H:%M:%S}  #{bseq:04d}  No Metal   PASS{sfx}\n", "pass")
+            self.lbl_bag_status.config(text="PASS", fg=C["green"])
+            self.lbl_bag_metal.config(text="No Metal", fg=C["green"])
+            self._md_shown.discard(bseq)
+        else:
+            # no MD result (under/over bag, or no metal_ip configured)
+            if not self.metal_ip:
+                self.stats["passed"] += 1
         self._update_stats()
 
     def _update_stats(self):
