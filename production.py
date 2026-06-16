@@ -686,7 +686,11 @@ class ProductionApp:
                     now = datetime.now()
                     if (now - last_w_reconnect).total_seconds() >= 5:
                         self.log.info("W reconnecting...")
-                        self._conn_w()
+                        if self._conn_w():
+                            # Clear stale queues — old MD readings must not pair with new WC bags
+                            self.w_queue.clear()
+                            self.m_queue.clear()
+                            self.log.info("Queues cleared after WC reconnect")
                         last_w_reconnect = now
 
                 # --- Read metal detector ---
