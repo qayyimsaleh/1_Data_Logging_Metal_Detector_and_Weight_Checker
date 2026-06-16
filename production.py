@@ -375,18 +375,45 @@ class ProductionApp:
             self._dd_row(p, i, l, f, t)
 
     def _build_monitor(self, parent):
-        sc = self._card(parent); sc.pack(fill="x", pady=(0, 6))
-        sg = ttk.Frame(sc, style="Card.TFrame"); sg.pack(fill="x")
+        # ── Last Bag Status ──────────────────────────────────
+        lb_f = tk.Frame(parent, bg=C["bg_card"], padx=14, pady=10)
+        lb_f.pack(fill="x", pady=(0, 5))
+        hdr_f = tk.Frame(lb_f, bg=C["bg_card"]); hdr_f.pack(fill="x")
+        tk.Label(hdr_f, text="LAST BAG", font=("Segoe UI", 8, "bold"),
+                 bg=C["bg_card"], fg=C["text3"]).pack(side="left")
+        self.lbl_bag_time = tk.Label(hdr_f, text="", font=("Segoe UI", 9),
+                                      bg=C["bg_card"], fg=C["text3"])
+        self.lbl_bag_time.pack(side="right")
+        body_f = tk.Frame(lb_f, bg=C["bg_card"]); body_f.pack(fill="x", pady=(6, 0))
+        lf = tk.Frame(body_f, bg=C["bg_card"]); lf.pack(side="left")
+        self.lbl_bag_status = tk.Label(lf, text="—", font=("Segoe UI", 32, "bold"),
+                                        bg=C["bg_card"], fg=C["text3"])
+        self.lbl_bag_status.pack(anchor="w")
+        self.lbl_bag_weight = tk.Label(lf, text="", font=("Segoe UI", 14),
+                                        bg=C["bg_card"], fg=C["text2"])
+        self.lbl_bag_weight.pack(anchor="w")
+        rf = tk.Frame(body_f, bg=C["bg_card"]); rf.pack(side="right", anchor="e")
+        self.lbl_bag_metal = tk.Label(rf, text="", font=("Segoe UI", 11),
+                                       bg=C["bg_card"], fg=C["text3"])
+        self.lbl_bag_metal.pack(anchor="e")
+
+        # ── Bag Counters ─────────────────────────────────────
+        cnt_f = tk.Frame(parent, bg=C["bg_card"], padx=8, pady=8)
+        cnt_f.pack(fill="x", pady=(0, 5))
         self.st_lbl = {}
-        for i, (l, k, clr) in enumerate([("Total", "total", C["text"]), ("Pass", "passed", C["green"]),
-            ("Under", "under", C["orange"]), ("Over", "over", C["red"]),
-            ("Metal", "metal", C["red"]), ("Rate", "rate", C["blue"])]):
-            f = ttk.Frame(sg, style="Card.TFrame"); f.pack(side="left", expand=True)
-            ttk.Label(f, text=l, font=("Segoe UI", 8), background=C["bg_card"], foreground=C["text3"]).pack()
-            lb = ttk.Label(f, text="0", font=("Segoe UI", 14, "bold"), background=C["bg_card"], foreground=clr)
-            lb.pack(); self.st_lbl[k] = lb
-        si = ttk.Frame(parent, style="Card.TFrame"); si.configure(padding=(14, 6))
-        si.pack(fill="x", pady=(0, 6))
+        for l, k, clr in [
+            ("TOTAL", "total", C["text"]), ("PASS", "passed", C["green"]),
+            ("UNDER WT", "under", C["orange"]), ("OVER WT", "over", C["red"]),
+            ("METAL", "metal", "#ff3333"), ("PASS RATE", "rate", C["blue"])]:
+            col = tk.Frame(cnt_f, bg=C["bg_card"]); col.pack(side="left", expand=True)
+            lv = tk.Label(col, text="0", font=("Segoe UI", 22, "bold"), bg=C["bg_card"], fg=clr)
+            lv.pack()
+            tk.Label(col, text=l, font=("Segoe UI", 8), bg=C["bg_card"], fg=C["text3"]).pack()
+            self.st_lbl[k] = lv
+
+        # ── Session Info ──────────────────────────────────────
+        si = tk.Frame(parent, bg=C["bg_card"], padx=14, pady=5)
+        si.pack(fill="x", pady=(0, 5))
         self.info_lot = ttk.Label(si, text="Lot: —", font=("Segoe UI", 9, "bold"),
                                    background=C["bg_card"], foreground=C["text3"])
         self.info_lot.pack(side="left", padx=(0, 20))
@@ -396,14 +423,22 @@ class ProductionApp:
         self.info_range = ttk.Label(si, text="Range: —", font=("Segoe UI", 9),
                                      background=C["bg_card"], foreground=C["text3"])
         self.info_range.pack(side="left")
-        tc = self._card(parent, "Live Data"); tc.pack(fill="both", expand=True)
-        self.term = scrolledtext.ScrolledText(tc, wrap=tk.WORD, font=("Consolas", 9),
-            bg=C["terminal_bg"], fg=C["green"], insertbackground=C["green"], relief="flat", borderwidth=0)
+
+        # ── Bag Log ───────────────────────────────────────────
+        log_outer = tk.Frame(parent, bg=C["bg_card"], padx=10, pady=8)
+        log_outer.pack(fill="both", expand=True)
+        tk.Label(log_outer, text="BAG LOG", font=("Segoe UI", 8, "bold"),
+                 bg=C["bg_card"], fg=C["accent"]).pack(anchor="w", pady=(0, 4))
+        tk.Frame(log_outer, height=1, bg=C["border"]).pack(fill="x", pady=(0, 4))
+        self.term = scrolledtext.ScrolledText(log_outer, wrap=tk.WORD, font=("Consolas", 10),
+            bg=C["terminal_bg"], fg=C["text2"], insertbackground=C["text2"],
+            relief="flat", borderwidth=0)
         self.term.pack(fill="both", expand=True)
         for tag, color in [("pass", C["green"]), ("under", C["orange"]), ("over", C["red"]),
                            ("info", C["blue"]), ("hdr", C["accent"]), ("metal", "#ff3333")]:
             self.term.tag_configure(tag, foreground=color)
-        self._tw("Waiting for production start...\n", "info"); self.term.config(state="disabled")
+        self._tw("Waiting for production start...\n", "info")
+        self.term.config(state="disabled")
 
     def _tw(self, text, tag=None):
         self.term.config(state="normal")
@@ -481,10 +516,10 @@ class ProductionApp:
                 self.info_lot.config(text=f"Lot: {self.session_data['lot_no']}", foreground=C["accent"])
                 self.info_target.config(text=f"Target: {self.session_data['net_weight']}g", foreground=C["text2"])
                 self.info_range.config(text=f"Range: {self.session_data['under_limit']} - {self.session_data['over_limit']}g", foreground=C["text2"])
-            self._tw(f"\n{'='*42}\n", "hdr")
-            self._tw(f"STARTED | ID:{self.prod_id} | {dt:%H:%M:%S}\n", "hdr")
-            self._tw(f"Lot: {self.session_data['lot_no']} | Machine: {self.machine_name}\n", "info")
-            self._tw(f"{'='*42}\n\n", "hdr"); self._update_stats()
+            self._tw(f"\n{'─'*54}\n", "hdr")
+            self._tw(f"  Session {self.prod_id}  started  {dt:%H:%M:%S}  —  {self.machine_name}\n", "hdr")
+            self._tw(f"  Lot: {self.session_data['lot_no']}\n", "info")
+            self._tw(f"{'─'*54}\n\n", "hdr"); self._update_stats()
         except Exception as e:
             self.log.error(f"Start error: {e}"); messagebox.showerror("Error", str(e))
 
@@ -499,9 +534,9 @@ class ProductionApp:
             self.db.call_sp("sp_EndProductionSession", [self.prod_id, end_dt, sanitize(self.user, 10)])
         except Exception as e:
             self.log.warning(f"Session end record failed: {e}")
-        self._tw(f"\n{'='*42}\n", "hdr")
-        self._tw(f"STOPPED | {end_dt:%H:%M:%S} | Total: {self.stats['total']}\n", "hdr")
-        self._tw(f"{'='*42}\n", "hdr")
+        self._tw(f"\n{'─'*54}\n", "hdr")
+        self._tw(f"  Session ended  {end_dt:%H:%M:%S}  —  {self.stats['total']} bags total\n", "hdr")
+        self._tw(f"{'─'*54}\n", "hdr")
         if self.info_lot:
             self.info_lot.config(text="Lot: —", foreground=C["text3"])
             self.info_target.config(text="Target: —", foreground=C["text3"])
@@ -802,30 +837,43 @@ class ProductionApp:
         ms, mv = mr['status'], mr.get('value')
         self.stats["total"] += 1
 
-        # Metal detected = always fail, regardless of weight
         if ms == 1:
             self.stats["metal"] += 1
-            self._tw(f"[{ts:%H:%M:%S}] #{lid:04d}  {w:>6d}g  FAIL   METAL!({mv})\n", "metal")
+            s_txt, s_clr = "METAL!", "#ff3333"
+            m_txt, m_clr = f"METAL  ({mv})", "#ff3333"
+            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   METAL DETECTED\n"
+            tag = "metal"
         elif st == 0:
             self.stats["under"] += 1
-            mv_str = f"({mv})" if mv is not None else ""
-            self._tw(f"[{ts:%H:%M:%S}] #{lid:04d}  {w:>6d}g  UNDER  OK{mv_str}\n", "under")
+            s_txt, s_clr = "UNDER WT", C["orange"]
+            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
+            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   UNDER WEIGHT\n"
+            tag = "under"
         elif st == 2:
             self.stats["over"] += 1
-            mv_str = f"({mv})" if mv is not None else ""
-            self._tw(f"[{ts:%H:%M:%S}] #{lid:04d}  {w:>6d}g  OVER   OK{mv_str}\n", "over")
+            s_txt, s_clr = "OVER WT", C["red"]
+            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
+            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   OVER WEIGHT\n"
+            tag = "over"
         else:
             self.stats["passed"] += 1
-            mv_str = f"({mv})" if mv is not None else ""
-            self._tw(f"[{ts:%H:%M:%S}] #{lid:04d}  {w:>6d}g  PASS   OK{mv_str}\n", "pass")
+            s_txt, s_clr = "PASS", C["green"]
+            m_txt, m_clr = ("No Metal", C["green"]) if mv is not None else ("", C["text3"])
+            log_line = f"  {ts:%H:%M:%S}   #{lid:04d}   {w:>8,} g   PASS\n"
+            tag = "pass"
 
+        self.lbl_bag_status.config(text=s_txt, fg=s_clr)
+        self.lbl_bag_weight.config(text=f"{w:,} g")
+        self.lbl_bag_time.config(text=f"{ts:%H:%M:%S}")
+        self.lbl_bag_metal.config(text=m_txt, fg=m_clr)
+        self._tw(log_line, tag)
         self._update_stats()
 
     def _update_stats(self):
         s = self.stats
         for k in ("total", "passed", "under", "over", "metal"):
             if k in self.st_lbl: self.st_lbl[k].config(text=str(s[k]))
-        rate = f"{s['passed'] / s['total'] * 100:.1f}%" if s["total"] else "0%"
+        rate = f"{s['passed'] / s['total'] * 100:.0f}%" if s["total"] else "—"
         if "rate" in self.st_lbl: self.st_lbl["rate"].config(text=rate)
 
     # ═══════════════ LIFECYCLE ═══════════════
