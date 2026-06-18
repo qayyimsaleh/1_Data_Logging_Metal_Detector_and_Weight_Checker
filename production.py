@@ -124,6 +124,12 @@ class ProductionApp:
                     font=("Segoe UI", 10, "bold"), padding=(14, 7))
         s.map("TNotebook.Tab", background=[("selected", C["accent"])],
               foreground=[("selected", "#fff")])
+        s.configure("Treeview", background=C["bg_input"], foreground=C["text"],
+                    fieldbackground=C["bg_input"], borderwidth=0, rowheight=26)
+        s.configure("Treeview.Heading", background=C["bg_card"], foreground=C["text2"],
+                    font=("Segoe UI", 9, "bold"))
+        s.map("Treeview", background=[("selected", C["accent"])],
+              foreground=[("selected", "#fff")])
 
     # ═══════════════ HELPERS ═══════════════
     def _clear(self):
@@ -175,18 +181,51 @@ class ProductionApp:
         self._login_user.grid(row=1, column=0, pady=(0, 10), ipady=4); self._login_user.focus()
         ttk.Label(f, text="Password", style="Norm.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 3))
         self._login_pass = ttk.Entry(f, width=26, show="*", font=("Segoe UI", 11), style="Dark.TEntry")
-        self._login_pass.grid(row=3, column=0, pady=(0, 14), ipady=4)
+        self._login_pass.grid(row=3, column=0, pady=(0, 10), ipady=4)
+        machines = []
+        try:
+            r = self.db.call_sp("sp_GetAllMachines", fetch=True)
+            machines = [row[0] for row in r] if r else []
+        except Exception:
+            pass
+        self._login_machine = ttk.Combobox(f, width=24, font=("Segoe UI", 11), style="Dark.TCombobox",
+                                            state="readonly", values=machines)
+        if machines:
+            ttk.Label(f, text="Line / Machine", style="Norm.TLabel").grid(row=4, column=0, sticky="w", pady=(0, 3))
+            if self.machine_name and self.machine_name in machines:
+                self._login_machine.set(self.machine_name)
+            else:
+                self._login_machine.set(machines[0])
+            self._login_machine.grid(row=5, column=0, pady=(0, 14), ipady=4)
         ttk.Button(card, text="Sign In", command=self._do_login, style="Accent.TButton").pack(fill="x")
         ttk.Label(m, text=f"v{APP_VERSION}", style="Sub.TLabel").pack(side="bottom", pady=10)
         self.root.bind("<Return>", lambda e: self._do_login())
 
+    def _apply_machine(self, name: str):
+        try:
+            r = self.db.call_sp("sp_GetMachineByName", [name], fetch=True)
+            if r:
+                self.machine_name = r[0][0]
+                self.weigher_ip = r[0][1]
+                self.metal_ip = r[0][2] if len(r[0]) > 2 else None
+                self.log.info(f"Machine set: {self.machine_name} (WC:{self.weigher_ip}, MD:{self.metal_ip})")
+        except Exception as e:
+            self.log.warning(f"Apply machine failed: {e}")
+            self.machine_name = name
+
     def _do_login(self):
         u, p = sanitize(self._login_user.get(), 50), self._login_pass.get()
+        selected = self._login_machine.get().strip()
         if not u or not p: messagebox.showwarning("Login", "Enter both fields."); return
+        if not selected and self._login_machine["values"]:
+            messagebox.showwarning("Login", "Select a line / machine."); return
         try:
             r = self.db.call_sp("sp_VerifyUser", [u, hash_password(p)], fetch=True)
             if r:
-                self.user = u; self.root.unbind("<Return>"); self._show_main()
+                self.user = u
+                if selected:
+                    self._apply_machine(selected)
+                self.root.unbind("<Return>"); self._show_main()
             else:
                 messagebox.showerror("Denied", "Invalid credentials.")
                 self._login_pass.delete(0, tk.END); self._login_pass.focus()
@@ -280,6 +319,7 @@ class ProductionApp:
                    style="Ghost.TButton").grid(row=2, column=5)
         bf = ttk.Frame(ct, style="Dark.TFrame"); bf.pack(fill="x", pady=14)
         ttk.Button(bf, text="Save & Continue", command=self._save_cfg, style="Green.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(bf, text="Manage Lines", command=self._show_lines, style="Ghost.TButton").pack(side="left", padx=(0, 8))
         ttk.Button(bf, text="Back", command=self._show_main, style="Ghost.TButton").pack(side="right")
 
     def _test_conn(self, ip_e, port_e, lbl):
@@ -310,11 +350,118 @@ class ProductionApp:
         else:
             self.metal_ip = None
         try:
-            self.db.call_sp("sp_UpdateMachineConfig", [self.pc_ip, self.weigher_ip, self.metal_ip])
-            self.log.info(f"Machine config saved: weigher={self.weigher_ip} metal={self.metal_ip}")
+            self.db.call_sp("sp_UpdateMachineByName", [self.machine_name, self.pc_ip, self.weigher_ip, self.metal_ip])
+            self.log.info(f"Machine config saved: {self.machine_name} weigher={self.weigher_ip} metal={self.metal_ip}")
         except Exception as e:
             self.log.warning(f"Config DB save failed (in-memory only): {e}")
         self._show_main()
+
+    def _show_lines(self):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Manage Lines / Machines")
+        dlg.configure(bg=C["bg_dark"])
+        dlg.geometry("640x520")
+        dlg.resizable(False, False)
+        dlg.grab_set()
+
+        ttk.Label(dlg, text="Lines / Machines", font=("Segoe UI", 13, "bold"),
+                  background=C["bg_dark"], foreground=C["text"]).pack(pady=(14, 4), padx=20, anchor="w")
+        tk.Frame(dlg, height=1, bg=C["border"]).pack(fill="x", padx=20)
+
+        tv_f = ttk.Frame(dlg, style="Dark.TFrame"); tv_f.pack(fill="both", expand=True, padx=20, pady=(10, 0))
+        cols = ("machine", "pc_ip", "weigher_ip", "metal_ip")
+        tv = ttk.Treeview(tv_f, columns=cols, show="headings", height=8)
+        for col, hdr, w in [("machine","Machine",130), ("pc_ip","PC IP",120),
+                             ("weigher_ip","Weigher IP",130), ("metal_ip","Metal IP",130)]:
+            tv.heading(col, text=hdr); tv.column(col, width=w, anchor="w")
+        sb = ttk.Scrollbar(tv_f, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        tv.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
+
+        def _refresh():
+            tv.delete(*tv.get_children())
+            try:
+                r = self.db.call_sp("sp_GetAllMachinesDetail", fetch=True)
+                for row in (r or []):
+                    tv.insert("", "end", values=(row[0], row[1], row[2], row[3] or ""))
+            except Exception as e:
+                self.log.warning(f"Lines load: {e}")
+        _refresh()
+
+        form_f = ttk.Frame(dlg, style="Card.TFrame"); form_f.pack(fill="x", padx=20, pady=10)
+        form_f.configure(padding=12)
+        flds = {}
+        for i, (key, label) in enumerate([("machine","Machine"), ("pc_ip","PC IP"),
+                                           ("weigher_ip","Weigher IP"), ("metal_ip","Metal IP (opt)")]):
+            ttk.Label(form_f, text=label, style="Norm.TLabel").grid(row=0, column=i, sticky="w", padx=(0, 4))
+            e = ttk.Entry(form_f, width=14, font=("Consolas", 10), style="Dark.TEntry")
+            e.grid(row=1, column=i, padx=(0, 6), ipady=2)
+            flds[key] = e
+
+        _selected_name = [None]
+
+        def _on_select(event):
+            sel = tv.focus()
+            if not sel: return
+            vals = tv.item(sel, "values")
+            _selected_name[0] = vals[0]
+            for k, v in zip(("machine", "pc_ip", "weigher_ip", "metal_ip"), vals):
+                flds[k].config(state="normal")
+                flds[k].delete(0, tk.END)
+                flds[k].insert(0, v)
+            flds["machine"].config(state="disabled")
+        tv.bind("<<TreeviewSelect>>", _on_select)
+
+        def _clear_form():
+            _selected_name[0] = None
+            for e in flds.values():
+                e.config(state="normal"); e.delete(0, tk.END)
+
+        def _get():
+            return {k: sanitize(e.get() if e["state"] != "disabled" else _selected_name[0] or "", 50)
+                    for k, e in flds.items()}
+
+        def _add():
+            v = _get()
+            if not v["machine"] or not v["pc_ip"] or not v["weigher_ip"]:
+                messagebox.showwarning("Validation", "Machine, PC IP, and Weigher IP are required.", parent=dlg); return
+            if not validate_ip(v["pc_ip"]): messagebox.showwarning("Validation", "Invalid PC IP.", parent=dlg); return
+            if not validate_ip(v["weigher_ip"]): messagebox.showwarning("Validation", "Invalid Weigher IP.", parent=dlg); return
+            if v["metal_ip"] and not validate_ip(v["metal_ip"]): messagebox.showwarning("Validation", "Invalid Metal IP.", parent=dlg); return
+            try:
+                self.db.call_sp("sp_AddMachine", [v["machine"], v["pc_ip"], v["weigher_ip"], v["metal_ip"] or None])
+                _clear_form(); _refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=dlg)
+
+        def _update():
+            if not _selected_name[0]: messagebox.showwarning("Select", "Select a machine first.", parent=dlg); return
+            v = _get()
+            if not v["pc_ip"] or not v["weigher_ip"]: messagebox.showwarning("Validation", "PC IP and Weigher IP are required.", parent=dlg); return
+            if not validate_ip(v["pc_ip"]): messagebox.showwarning("Validation", "Invalid PC IP.", parent=dlg); return
+            if not validate_ip(v["weigher_ip"]): messagebox.showwarning("Validation", "Invalid Weigher IP.", parent=dlg); return
+            if v["metal_ip"] and not validate_ip(v["metal_ip"]): messagebox.showwarning("Validation", "Invalid Metal IP.", parent=dlg); return
+            try:
+                self.db.call_sp("sp_UpdateMachineByName", [_selected_name[0], v["pc_ip"], v["weigher_ip"], v["metal_ip"] or None])
+                _clear_form(); _refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=dlg)
+
+        def _delete():
+            if not _selected_name[0]: messagebox.showwarning("Select", "Select a machine first.", parent=dlg); return
+            if not messagebox.askyesno("Confirm", f"Delete '{_selected_name[0]}'?", parent=dlg): return
+            try:
+                self.db.call_sp("sp_DeleteMachine", [_selected_name[0]])
+                _clear_form(); _refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=dlg)
+
+        btn_f = ttk.Frame(dlg, style="Dark.TFrame"); btn_f.pack(fill="x", padx=20, pady=(0, 16))
+        ttk.Button(btn_f, text="Add", command=_add, style="Accent.TButton").pack(side="left", padx=(0, 6))
+        ttk.Button(btn_f, text="Update", command=_update, style="Green.TButton").pack(side="left", padx=(0, 6))
+        ttk.Button(btn_f, text="Delete", command=_delete, style="Red.TButton").pack(side="left", padx=(0, 6))
+        ttk.Button(btn_f, text="Clear", command=_clear_form, style="Ghost.TButton").pack(side="left")
+        ttk.Button(btn_f, text="Close", command=dlg.destroy, style="Ghost.TButton").pack(side="right")
 
     # ═══════════════ PRODUCTION SCREEN ═══════════════
     def _show_production(self):
