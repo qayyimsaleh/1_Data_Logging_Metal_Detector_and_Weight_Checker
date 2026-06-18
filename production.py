@@ -76,9 +76,10 @@ class ProductionApp:
         self.user = self.prod_id = self.session_data = self.screen = None
         self.entries = {}
         self.w_queue = deque(); self.m_queue = deque(); self.db_ops = deque()
-        self.next_log = 1
+        self.next_log = None  # unused; IDs fetched per-bag via sp_GetNextLogId
         self.stats = dict(total=0, passed=0, under=0, over=0, metal=0)
         self.bag_seq = 0
+        self.wc_failed = None
         self._wc_shown = set()
         self._md_shown = set()
         self.last_match_debug = datetime.now()
@@ -672,10 +673,8 @@ class ProductionApp:
                 if attempt < 1: time.sleep(1)
             else: messagebox.showwarning("Metal", "Metal detector failed. Continuing without.")
         self.w_queue.clear(); self.m_queue.clear(); self.db_ops.clear()
-        self.bag_seq = 0; self._wc_shown.clear(); self._md_shown.clear()
+        self.bag_seq = 0; self.wc_failed = None; self._wc_shown.clear(); self._md_shown.clear()
         self.last_match_debug = self.last_cleanup = datetime.now()
-        try: self.next_log = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
-        except Exception: self.next_log = 1
         self.pause_evt.clear()
         self.stop_evt.clear()
         self.thread = threading.Thread(target=self._mon_loop, daemon=True, name="ProductionMonitor")
@@ -715,26 +714,33 @@ class ProductionApp:
                         if weight is not None:
                             now_ts = datetime.now()
                             st = self._calc_status(weight)
-                            self.bag_seq += 1
+                            is_wc_retry = (self.wc_failed is not None)
+                            if not is_wc_retry:
+                                self.bag_seq += 1
                             wr = {
                                 'weight': weight, 'status': st,
                                 'timestamp': machine_ts or now_ts,
                                 'queue_time': now_ts,
-                                'log_id': self.next_log,
-                                'bag_seq': self.bag_seq}
-                            self.next_log += 1
-                            self.root.after(0, self._disp_wc, dict(wr))
-                            if self.metal_ip and st == 1:
-                                # PASS bag with MD configured → queue for MD pairing
-                                self.w_queue.append(wr)
-                                self.log.info(f"W: {weight}g PASS → queued for MD (Q:{len(self.w_queue)})")
-                            else:
-                                # FAIL weight or no MD → log directly
+                                'log_id': self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0],
+                                'bag_seq': self.wc_failed['bag_seq'] if is_wc_retry else self.bag_seq}
+                            self.root.after(0, self._disp_wc, dict(wr), is_wc_retry)
+                            if st == 1:  # PASS (new or retry cleared)
+                                self.wc_failed = None
+                                if self.metal_ip:
+                                    self.w_queue.append(wr)
+                                    self.log.info(f"W: {weight}g PASS → queued for MD (Q:{len(self.w_queue)}){' (WC retry cleared)' if is_wc_retry else ''}")
+                                else:
+                                    mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
+                                    self.db_ops.append((wr, mr))
+                                    self.root.after(0, self._disp_md, dict(wr), mr)
+                                    self.log.info(f"W: {weight}g PASS → direct log{' (WC retry cleared)' if is_wc_retry else ''}")
+                            else:  # OVER/UNDER — log immediately, stay in retry mode
                                 mr = {'status': None, 'value': None, 'timestamp': wr['timestamp']}
                                 self.db_ops.append((wr, mr))
                                 self.root.after(0, self._disp_md, dict(wr), mr)
-                                s = 'PASS' if st == 1 else ('UNDER' if st == 0 else 'OVER')
-                                self.log.info(f"W: {weight}g {s} → direct log")
+                                self.wc_failed = wr
+                                s = 'UNDER' if st == 0 else 'OVER'
+                                self.log.info(f"W: {weight}g {s} → direct log{' ↩ RETRY' if is_wc_retry else ''}")
                     except socket.timeout:
                         pass  # Normal - no data right now
                     except (ConnectionError, OSError) as e:
@@ -746,10 +752,13 @@ class ProductionApp:
                     if (now - last_w_reconnect).total_seconds() >= 5:
                         self.log.info("W reconnecting...")
                         if self._conn_w():
-                            # Clear stale queues — old MD readings must not pair with new WC bags
-                            self.w_queue.clear()
+                            # Only clear MD queue — stale MD readings from before the disconnect
+                            # must not pair with new WC bags after reconnect.
+                            # w_queue is intentionally preserved: those bags are physically on
+                            # the conveyor heading to MD and still need to be matched and logged.
                             self.m_queue.clear()
-                            self.log.info("Queues cleared after WC reconnect")
+                            self.wc_failed = None
+                            self.log.info("WC reconnected; MD queue cleared, WC transit queue preserved")
                         last_w_reconnect = now
 
                 # --- Read metal detector ---
@@ -804,11 +813,10 @@ class ProductionApp:
                     # those bags will consume this weight entry instead — FIFO
                     # aggregate counts stay correct even if per-bag pairing drifts.
                     retry_wr = dict(wr)
-                    retry_wr['log_id'] = self.next_log
-                    self.next_log += 1
+                    retry_wr['log_id'] = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
                     self.w_queue.appendleft(retry_wr)
                     self.log.info(f"MD fail log_id={wr['log_id']}, retry→log_id={retry_wr['log_id']}")
-                    pass
+                self._flush()  # save immediately after each MD result
                 matches += 1
         else:
             # Safety net: w_queue only has items here if metal_ip was cleared
@@ -820,7 +828,7 @@ class ProductionApp:
                 self.root.after(0, self._disp_md, wr, mr); matches += 1
         if matches > 0:
             self.log.info(f"Matched {matches} reading(s)")
-        if self.db_ops:
+        if self.db_ops:  # flush any remaining OVER/UNDER bags
             self._flush()
 
     def _cleanup_old(self):
@@ -856,22 +864,25 @@ class ProductionApp:
             except Exception as e: self.log.error(f"DB flush: {e}")
         self.db_ops.clear()
 
-    def _disp_wc(self, wr):
+    def _disp_wc(self, wr, is_retry=False):
         """Called immediately when WC reads a bag. Updates WC panel and last-bag card."""
         w, st, ts = wr['weight'], wr['status'], wr['timestamp']
         bseq = wr.get('bag_seq', 0)
-        self._wc_shown.add(bseq)
-        self.stats["total"] += 1
+        retry_sfx = "  ↩ RETRY" if is_retry else ""
+        if not is_retry:
+            self._wc_shown.add(bseq)
+            self.stats["total"] += 1
         if st == 0:
-            self.stats["under"] += 1
-            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  UNDER WEIGHT\n", "under")
+            if not is_retry: self.stats["under"] += 1
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  UNDER WEIGHT{retry_sfx}\n", "under")
             self.lbl_bag_status.config(text="UNDER WT", fg=C["orange"])
         elif st == 2:
-            self.stats["over"] += 1
-            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  OVER WEIGHT\n", "over")
+            if not is_retry: self.stats["over"] += 1
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  OVER WEIGHT{retry_sfx}\n", "over")
             self.lbl_bag_status.config(text="OVER WT", fg=C["red"])
         else:
-            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  PASS\n", "pass")
+            cleared_sfx = "  CLEARED" if is_retry else ""
+            self._tw_wc(f"  {ts:%H:%M:%S}  #{bseq:04d}  {w:>8,} g  PASS{cleared_sfx}\n", "pass")
             self.lbl_bag_status.config(text="PASS", fg=C["green"])
         self.lbl_bag_weight.config(text=f"{w:,} g")
         self.lbl_bag_time.config(text=f"{ts:%H:%M:%S}")
