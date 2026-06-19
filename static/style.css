@@ -45,6 +45,7 @@ body {
   font-size: 14px;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden; /* prevent horizontal scroll at any zoom level */
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -94,7 +95,7 @@ body {
 .nav-ver { font-size: 11px; color: var(--text4); }
 
 /* ── layout ── */
-.main-content { padding: 20px 24px; }
+.main-content { padding: 20px 24px; overflow-x: hidden; min-width: 0; }
 .page-title { font-size: 20px; font-weight: 700; color: var(--text);
               letter-spacing: -.02em; margin-bottom: 18px; }
 
@@ -159,7 +160,7 @@ body {
 .kpi-blue   { color: var(--teal);   }
 
 /* ── chart cards ── */
-.chart-row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; margin-bottom: 10px; }
+.chart-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); gap: 10px; margin-bottom: 10px; }
 .chart-card {
   background: var(--glass);
   backdrop-filter: blur(20px) saturate(160%);
@@ -194,7 +195,7 @@ body {
 .filter-select, .filter-input {
   background: var(--bg-2); color: var(--text);
   border: 1px solid var(--sep); border-radius: var(--r-sm);
-  padding: 7px 10px; font-size: 13px; min-width: 120px;
+  padding: 7px 10px; font-size: 13px; min-width: 0; width: 100%;
   font-family: inherit; appearance: none;
   transition: border-color .15s;
 }
@@ -204,7 +205,7 @@ body {
 }
 
 /* ── reports layout ── */
-.reports-layout { display: grid; grid-template-columns: 210px 1fr; gap: 14px; align-items: start; }
+.reports-layout { display: grid; grid-template-columns: minmax(0,200px) minmax(0,1fr); gap: 14px; align-items: start; }
 .filter-panel {
   background: var(--glass);
   backdrop-filter: blur(20px) saturate(160%);
@@ -340,12 +341,13 @@ tr:hover td { background: rgba(255,255,255,.03); color: var(--text); }
 
 /* ── responsive ── */
 @media (max-width: 1100px) {
-  .kpi-grid { grid-template-columns: repeat(4,1fr) !important; }
   .chart-row { grid-template-columns: 1fr; }
 }
-@media (max-width: 720px) {
-  .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
+@media (max-width: 900px) {
   .reports-layout { grid-template-columns: 1fr; }
   .filter-panel { position: static; }
-  .main-content { padding: 14px 16px; }
+}
+@media (max-width: 600px) {
+  .main-content { padding: 12px 12px; }
+  .topnav-inner { padding: 0 12px; }
 }

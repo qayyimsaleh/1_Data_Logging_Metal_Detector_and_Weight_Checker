@@ -13,25 +13,25 @@
   <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
     <div class="filter-group">
       <label class="filter-label">Machine</label>
-      <select id="f-machine" class="filter-select" style="min-width:140px">
+      <select id="f-machine" class="filter-select">
         <option value="">All Lines</option>
         {% for m in machines %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
       </select>
     </div>
     <div class="filter-group">
       <label class="filter-label">From</label>
-      <input id="f-start" type="date" class="filter-input" style="min-width:120px">
+      <input id="f-start" type="date" class="filter-input" style="min-width:0">
     </div>
     <div class="filter-group">
       <label class="filter-label">To</label>
-      <input id="f-end" type="date" class="filter-input" style="min-width:120px">
+      <input id="f-end" type="date" class="filter-input" style="min-width:0">
     </div>
     <button class="btn btn-accent btn-sm" onclick="loadAll()">Refresh</button>
   </div>
 </div>
 
 <!-- ── KPI Cards ── -->
-<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px">
 
   <div class="kpi-card anim-in d1">
     <div class="kpi-accent-bar" style="background:var(--accent)"></div>
@@ -84,7 +84,7 @@
 
 <!-- ── Section: Overview ── -->
 <div class="dash-section-label anim-in d1">Overview</div>
-<div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d2">
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px" class="anim-in d2">
   <div class="chart-card">
     <div class="chart-card-title">Pass / Fail</div>
     <div style="height:150px;display:flex;align-items:center;justify-content:center">
@@ -103,7 +103,7 @@
 
 <!-- ── Section: Analysis ── -->
 <div class="dash-section-label anim-in d2">Analysis</div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px" class="anim-in d3">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:10px" class="anim-in d3">
   <div class="chart-card">
     <div class="chart-card-title">FPY by Shift</div>
     <div style="height:150px"><canvas id="shift-chart"></canvas></div>
@@ -123,7 +123,7 @@
 </div>
 
 <!-- ── Section: Weight + Hourly ── -->
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d4">
+<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px;margin-bottom:10px" class="anim-in d4">
   <div class="chart-card">
     <div class="chart-card-title">Weight Trend — Avg / Min / Max per Session (g)</div>
     <div style="height:150px"><canvas id="weight-trend"></canvas></div>
@@ -136,7 +136,7 @@
 
 <!-- ── Section: Sessions ── -->
 <div class="dash-section-label anim-in d5">Sessions</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d5">
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px" class="anim-in d5">
   <div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Top by Volume</div>
     <div class="table-wrap">
