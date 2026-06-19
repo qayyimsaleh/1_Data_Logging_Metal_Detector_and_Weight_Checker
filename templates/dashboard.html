@@ -1,196 +1,172 @@
 {% extends "base.html" %}
 {% block content %}
 
-<!-- status bar -->
+<!-- ── Status + Header ── -->
 <div class="status-bar">
   <span><span class="live-dot"></span><strong>Live</strong></span>
   <span id="last-updated">—</span>
   <span style="margin-left:auto;color:var(--text3)" id="refresh-label">—</span>
 </div>
 
-<!-- filter row -->
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px">
-  <h1 class="page-title" style="margin-bottom:0">Production Dashboard</h1>
-  <div class="filter-bar" style="margin-bottom:0">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <h1 class="page-title" style="margin-bottom:0;font-size:18px">Production Dashboard</h1>
+  <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
     <div class="filter-group">
       <label class="filter-label">Machine</label>
-      <select id="f-machine" class="filter-select" style="min-width:155px">
+      <select id="f-machine" class="filter-select" style="min-width:140px">
         <option value="">All Lines</option>
         {% for m in machines %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
       </select>
     </div>
     <div class="filter-group">
       <label class="filter-label">From</label>
-      <input id="f-start" type="date" class="filter-input">
+      <input id="f-start" type="date" class="filter-input" style="min-width:120px">
     </div>
     <div class="filter-group">
       <label class="filter-label">To</label>
-      <input id="f-end" type="date" class="filter-input">
+      <input id="f-end" type="date" class="filter-input" style="min-width:120px">
     </div>
-    <button class="btn btn-accent" onclick="loadAll()">Refresh</button>
+    <button class="btn btn-accent btn-sm" onclick="loadAll()">Refresh</button>
   </div>
 </div>
 
 <!-- ── KPI Cards ── -->
-<div class="kpi-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:14px">
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px">
 
   <div class="kpi-card anim-in d1">
     <div class="kpi-accent-bar" style="background:var(--accent)"></div>
     <div class="kpi-label">Sessions</div>
-    <div class="kpi-value kpi-accent" id="kpi-sessions">
-      <span class="skel">000</span></div>
+    <div class="kpi-value kpi-accent" id="kpi-sessions" style="font-size:24px"><span class="skel">000</span></div>
   </div>
 
   <div class="kpi-card anim-in d2">
     <div class="kpi-accent-bar" style="background:var(--teal)"></div>
     <div class="kpi-label">Total Bags</div>
-    <div class="kpi-value kpi-blue" id="kpi-bags">
-      <span class="skel">0000</span></div>
+    <div class="kpi-value kpi-blue" id="kpi-bags" style="font-size:24px"><span class="skel">0000</span></div>
   </div>
 
   <div class="kpi-card anim-in d3">
     <div class="kpi-accent-bar" style="background:var(--green)"></div>
     <div class="kpi-label">FPY</div>
-    <div class="kpi-value kpi-green" id="kpi-rate">
-      <span class="skel">00%</span></div>
+    <div class="kpi-value kpi-green" id="kpi-rate" style="font-size:24px"><span class="skel">00%</span></div>
     <div class="kpi-sub">First Pass Yield</div>
-    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-rate-bar"
-         style="background:var(--green)"></div></div>
+    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-rate-bar" style="background:var(--green)"></div></div>
   </div>
 
   <div class="kpi-card anim-in d4">
     <div class="kpi-accent-bar" style="background:var(--red)"></div>
     <div class="kpi-label">Defect Rate</div>
-    <div class="kpi-value kpi-red" id="kpi-defect">
-      <span class="skel">0%</span></div>
-    <div class="kpi-sub">Under + Over + Metal</div>
-    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-defect-bar"
-         style="background:var(--red)"></div></div>
+    <div class="kpi-value kpi-red" id="kpi-defect" style="font-size:24px"><span class="skel">0%</span></div>
+    <div class="kpi-sub">Under+Over+Metal</div>
+    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-defect-bar" style="background:var(--red)"></div></div>
   </div>
 
   <div class="kpi-card anim-in d5">
     <div class="kpi-accent-bar" style="background:var(--orange)"></div>
     <div class="kpi-label">Under Weight</div>
-    <div class="kpi-value kpi-orange" id="kpi-under">
-      <span class="skel">00</span></div>
+    <div class="kpi-value kpi-orange" id="kpi-under" style="font-size:24px"><span class="skel">00</span></div>
   </div>
 
   <div class="kpi-card anim-in d6">
     <div class="kpi-accent-bar" style="background:var(--red)"></div>
     <div class="kpi-label">Over Weight</div>
-    <div class="kpi-value kpi-red" id="kpi-over">
-      <span class="skel">00</span></div>
+    <div class="kpi-value kpi-red" id="kpi-over" style="font-size:24px"><span class="skel">00</span></div>
   </div>
 
   <div class="kpi-card anim-in d7">
     <div class="kpi-accent-bar" style="background:var(--purple)"></div>
     <div class="kpi-label">Throughput</div>
-    <div class="kpi-value" style="color:var(--purple)" id="kpi-throughput">
-      <span class="skel">000</span></div>
-    <div class="kpi-sub">bags / hour avg</div>
+    <div class="kpi-value" style="color:var(--purple);font-size:24px" id="kpi-throughput"><span class="skel">000</span></div>
+    <div class="kpi-sub">bags / hr avg</div>
   </div>
 
 </div>
 
-<!-- ── Row 1: Donut + Daily ── -->
-<div class="chart-row anim-in d2" style="margin-bottom:12px">
+<!-- ── Section: Overview ── -->
+<div class="dash-section-label anim-in d1">Overview</div>
+<div style="display:grid;grid-template-columns:200px 1fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d2">
   <div class="chart-card">
-    <div class="chart-card-title">Pass / Fail Breakdown</div>
-    <div style="height:220px;display:flex;align-items:center;justify-content:center">
+    <div class="chart-card-title">Pass / Fail</div>
+    <div style="height:150px;display:flex;align-items:center;justify-content:center">
       <canvas id="donut-chart"></canvas>
     </div>
   </div>
   <div class="chart-card">
+    <div class="chart-card-title">FPY Trend — First Pass Yield (%)</div>
+    <div style="height:150px"><canvas id="fpy-trend"></canvas></div>
+  </div>
+  <div class="chart-card">
     <div class="chart-card-title">Daily Production Volume</div>
-    <div style="height:220px"><canvas id="bar-daily"></canvas></div>
+    <div style="height:150px"><canvas id="bar-daily"></canvas></div>
   </div>
 </div>
 
-<!-- ── Row 2: FPY Trend + Defect Pareto ── -->
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px"
-     class="anim-in d3">
+<!-- ── Section: Analysis ── -->
+<div class="dash-section-label anim-in d2">Analysis</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px" class="anim-in d3">
   <div class="chart-card">
-    <div class="chart-card-title">FPY Trend — First Pass Yield by Day (%)</div>
-    <div style="height:200px"><canvas id="fpy-trend"></canvas></div>
+    <div class="chart-card-title">FPY by Shift</div>
+    <div style="height:150px"><canvas id="shift-chart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-title">FPY by Line</div>
+    <div style="height:150px"><canvas id="machine-chart"></canvas></div>
   </div>
   <div class="chart-card">
     <div class="chart-card-title">Defect Pareto</div>
-    <div style="height:200px"><canvas id="defect-pareto"></canvas></div>
+    <div style="height:150px"><canvas id="defect-pareto"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-title">Bags by Product</div>
+    <div style="height:150px"><canvas id="product-chart"></canvas></div>
   </div>
 </div>
 
-<!-- ── Row 3: Shift / Machine / Product ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px"
-     class="anim-in d4">
-  <div class="chart-card">
-    <div class="chart-card-title">FPY by Shift (%)</div>
-    <div style="height:200px"><canvas id="shift-chart"></canvas></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-card-title">FPY by Line / Machine (%)</div>
-    <div style="height:200px"><canvas id="machine-chart"></canvas></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-card-title">Bags by Product (Top 8)</div>
-    <div style="height:200px"><canvas id="product-chart"></canvas></div>
-  </div>
+<!-- ── Section: Hourly ── -->
+<div class="dash-section-label anim-in d3">Hourly Distribution</div>
+<div class="chart-card anim-in d3" style="margin-bottom:10px">
+  <div style="height:100px"><canvas id="hourly-chart"></canvas></div>
 </div>
 
-<!-- ── Row 4: Trading Candlestick Chart (full width) ── -->
-<div class="chart-card anim-in d5" style="margin-bottom:12px">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-    <div>
-      <div class="chart-card-title" style="margin-bottom:4px">Weight Performance Chart</div>
-      <div style="font-size:11px;color:var(--text3);display:flex;gap:14px;flex-wrap:wrap">
-        <span>Wick = Min / Max weight range</span>
-        <span>Body = weight spread (Q1–Q3)</span>
-        <span><span style="color:#30D158">■</span> FPY ≥95%</span>
-        <span><span style="color:#FF9F0A">■</span> FPY 80–95%</span>
-        <span><span style="color:#FF453A">■</span> FPY &lt;80%</span>
-      </div>
-    </div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <div id="candle-tooltip" style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;text-align:right"></div>
-      <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().fitContent()">Fit All</button>
-      <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().resetTimeScale()">Reset</button>
-    </div>
-  </div>
-  <div id="trading-chart" style="height:320px;border-radius:var(--r-sm);overflow:hidden"></div>
+<!-- ── Section: Weight Performance ── -->
+<div class="dash-section-label anim-in d4">Weight Performance Chart
+  <span style="font-weight:400;font-size:10px;color:var(--text3);margin-left:10px">
+    Wick = Min/Max &nbsp;·&nbsp; Body = Q1–Q3 spread &nbsp;·&nbsp;
+    <span style="color:#30D158">■</span> FPY≥95%
+    <span style="color:#FF9F0A;margin-left:4px">■</span> 80–95%
+    <span style="color:#FF453A;margin-left:4px">■</span> &lt;80%
+  </span>
+  <span style="margin-left:auto;display:flex;gap:6px">
+    <span id="candle-tooltip" style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums"></span>
+    <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().fitContent()">Fit</button>
+    <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().resetTimeScale()">Reset</button>
+  </span>
+</div>
+<div class="chart-card anim-in d4" style="margin-bottom:10px">
+  <div id="trading-chart" style="height:260px;border-radius:var(--r-sm);overflow:hidden"></div>
 </div>
 
-<!-- ── Row 4b: Hourly Distribution (moved here) ── -->
-<div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px" class="anim-in d5">
-  <div class="chart-card">
-    <div class="chart-card-title">Hourly Production Distribution</div>
-    <div style="height:160px"><canvas id="hourly-chart"></canvas></div>
-  </div>
-</div>
-
-<!-- ── Tables ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px"
-     class="anim-in d6">
+<!-- ── Section: Sessions ── -->
+<div class="dash-section-label anim-in d5">Sessions</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d5">
   <div>
-    <div class="section-title">Top Sessions by Volume</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Top by Volume</div>
     <div class="table-wrap">
-      <div class="table-scroll">
-        <table><thead><tr>
-          <th>Lot</th><th>Product</th><th>Shift</th><th>Machine</th><th>Bags</th><th>FPY</th>
-        </tr></thead>
-        <tbody id="top-body"><tr><td colspan="6" style="text-align:center;padding:32px">
-          <span class="spinner"></span></td></tr></tbody></table>
-      </div>
+      <table><thead><tr>
+        <th>Lot</th><th>Product</th><th>Shift</th><th>Machine</th><th>Bags</th><th>FPY</th>
+      </tr></thead>
+      <tbody id="top-body"><tr><td colspan="6" style="text-align:center;padding:24px">
+        <span class="spinner"></span></td></tr></tbody></table>
     </div>
   </div>
   <div>
-    <div class="section-title">Recent Sessions</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Recent</div>
     <div class="table-wrap">
-      <div class="table-scroll">
-        <table><thead><tr>
-          <th>ID</th><th>Machine</th><th>Lot</th><th>Total</th><th>Pass</th><th>FPY</th><th>First</th>
-        </tr></thead>
-        <tbody id="recent-body"><tr><td colspan="7" style="text-align:center;padding:32px">
-          <span class="spinner"></span></td></tr></tbody></table>
-      </div>
+      <table><thead><tr>
+        <th>ID</th><th>Machine</th><th>Lot</th><th>Total</th><th>Pass</th><th>FPY</th><th>First</th>
+      </tr></thead>
+      <tbody id="recent-body"><tr><td colspan="7" style="text-align:center;padding:24px">
+        <span class="spinner"></span></td></tr></tbody></table>
     </div>
   </div>
 </div>
@@ -210,198 +186,68 @@ function mkChart(id, cfg) {
   charts[id] = new Chart(ctx, cfg);
 }
 
-// ── TradingView candlestick chart ─────────────────────────────────────────────
-let candleChart = null;
-
-function renderTradingChart(candles) {
-  const container = document.getElementById('trading-chart');
-  if (!container || typeof LightweightCharts === 'undefined') return;
-  if (candleChart) { candleChart.remove(); candleChart = null; }
-  if (!candles.length) {
-    container.innerHTML = `<div class="state-box"><span class="state-icon">◎</span>No weight data</div>`;
-    return;
-  }
-
-  candleChart = LightweightCharts.createChart(container, {
-    width:  container.clientWidth,
-    height: container.clientHeight || 320,
-    layout: {
-      background: { type: 'solid', color: 'transparent' },
-      textColor:  'rgba(235,235,245,0.55)',
-      fontFamily: '-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif',
-      fontSize: 11,
-    },
-    grid: {
-      vertLines: { color: 'rgba(84,84,88,0.18)', style: 1 },
-      horzLines: { color: 'rgba(84,84,88,0.18)', style: 1 },
-    },
-    crosshair: {
-      mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { color:'rgba(10,132,255,0.6)', width:1, style:0,
-                  labelBackgroundColor:'#0A84FF' },
-      horzLine: { color:'rgba(10,132,255,0.6)', width:1, style:0,
-                  labelBackgroundColor:'#0A84FF' },
-    },
-    rightPriceScale: {
-      borderColor: 'rgba(84,84,88,0.4)',
-      scaleMargins: { top: 0.08, bottom: 0.28 },
-    },
-    timeScale: {
-      borderColor: 'rgba(84,84,88,0.4)',
-      timeVisible: true,
-      secondsVisible: false,
-    },
-    handleScroll: { mouseWheel:true, pressedMouseMove:true },
-    handleScale:  { mouseWheel:true, pinch:true },
-  });
-
-  // ── candlestick series ──────────────────────────────────────────────────────
-  const candleSeries = candleChart.addCandlestickSeries({
-    upColor:        '#30D158',
-    downColor:      '#FF453A',
-    borderUpColor:  '#30D158',
-    borderDownColor:'#FF453A',
-    wickUpColor:    '#30D158',
-    wickDownColor:  '#FF453A',
-    priceFormat: { type:'custom', formatter: v => v.toLocaleString()+' g' },
-  });
-
-  // ── volume bars (bag count) ─────────────────────────────────────────────────
-  const volSeries = candleChart.addHistogramSeries({
-    color: 'rgba(10,132,255,0.35)',
-    priceFormat: { type:'volume', precision:0 },
-    priceScaleId: 'vol',
-  });
-  candleChart.priceScale('vol').applyOptions({
-    scaleMargins: { top: 0.78, bottom: 0 },
-  });
-
-  // ── average weight line ─────────────────────────────────────────────────────
-  const avgLine = candleChart.addLineSeries({
-    color: 'rgba(90,200,250,0.6)',
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Dashed,
-    priceFormat: { type:'custom', formatter: v => v.toLocaleString()+' g' },
-    title: 'Avg',
-  });
-
-  // set data (individual bar colors via per-item color field)
-  candleSeries.setData(candles.map(c => ({
-    time:  c.time, open: c.open, high: c.high, low: c.low, close: c.close,
-    color: c.color, wickColor: c.color, borderColor: c.color,
-  })));
-  volSeries.setData(candles.map(c => ({
-    time: c.time, value: c.volume,
-    color: c.color.replace('#30D158','rgba(48,209,88,0.35)')
-                  .replace('#FF9F0A','rgba(255,159,10,0.35)')
-                  .replace('#FF453A','rgba(255,69,58,0.35)'),
-  })));
-  avgLine.setData(candles.map(c => ({ time: c.time, value: c.avg })));
-
-  candleChart.timeScale().fitContent();
-
-  // ── hover tooltip ───────────────────────────────────────────────────────────
-  const tip = document.getElementById('candle-tooltip');
-  candleChart.subscribeCrosshairMove(param => {
-    if (!tip) return;
-    if (!param.point || !param.seriesData?.size) { tip.innerHTML = ''; return; }
-    const bar = param.seriesData.get(candleSeries);
-    const idx = candles.findIndex(c => c.time === (param.time ?? 0));
-    const meta = idx >= 0 ? candles[idx] : null;
-    if (bar && meta) {
-      const col = meta.rate >= 95 ? '#30D158' : meta.rate >= 80 ? '#FF9F0A' : '#FF453A';
-      tip.innerHTML =
-        `<span style="color:${col};font-weight:700">FPY ${meta.rate}%</span>` +
-        `&nbsp;·&nbsp;Lot <strong>${meta.lot}</strong>` +
-        `&nbsp;·&nbsp;Max <strong>${bar.high.toLocaleString()} g</strong>` +
-        `&nbsp;·&nbsp;Avg <strong>${meta.avg.toLocaleString()} g</strong>` +
-        `&nbsp;·&nbsp;Min <strong>${bar.low.toLocaleString()} g</strong>` +
-        `&nbsp;·&nbsp;<span style="color:rgba(235,235,245,0.5)">${meta.volume} bags</span>`;
-    }
-  });
-
-  // resize with container
-  const ro = new ResizeObserver(() => {
-    if (candleChart) candleChart.applyOptions({ width: container.clientWidth });
-  });
-  ro.observe(container);
-}
-
-// ── macOS system colour palette ───────────────────────────────────────────────
+// ── colour palette ────────────────────────────────────────────────────────────
 const C = {
   accent:'#0A84FF', green:'#30D158', red:'#FF453A', orange:'#FF9F0A',
-  blue:'#5AC8FA', purple:'#BF5AF2', yellow:'#FFD60A',
+  blue:'#5AC8FA', purple:'#BF5AF2',
   text2:'rgba(235,235,245,0.60)', text3:'rgba(235,235,245,0.30)',
-  border:'rgba(84,84,88,0.65)', sep:'rgba(84,84,88,0.30)',
+  border:'rgba(84,84,88,0.65)', sep:'rgba(84,84,88,0.20)',
 };
-const gridOpts   = { color: C.sep };
-const tickOpts   = { color: C.text3, font:{size:10} };
+const gridOpts  = { color: C.sep };
+const tickOpts  = { color: C.text3, font:{size:10} };
 const baseScales = {
   x:{ ticks:tickOpts, grid:gridOpts },
   y:{ ticks:tickOpts, grid:gridOpts, beginAtZero:true },
 };
-const noLegend   = { legend:{display:false} };
-const chartAnim  = { duration:700, easing:'easeOutQuart' };
+const noLegend  = { legend:{display:false} };
+const chartAnim = { duration:600, easing:'easeOutQuart' };
+// slim bars: max 14px wide, 55% of category
+const slimBar   = { maxBarThickness:14, barPercentage:0.55, categoryPercentage:0.7 };
+const slimBarH  = { maxBarThickness:12, barPercentage:0.55, categoryPercentage:0.7 };
 
 // ── animated number counter ───────────────────────────────────────────────────
-function animNum(el, target, suffix='', duration=950) {
+function animNum(el, target, suffix='', duration=900) {
+  if (!el) return;
   const prev = parseFloat(el.dataset.prev ?? 0) || 0;
   el.dataset.prev = target;
   const t0 = performance.now();
-  const isFloat = suffix === '%' && !Number.isInteger(target);
   function tick(now) {
-    const p    = Math.min((now - t0) / duration, 1);
+    const p   = Math.min((now - t0) / duration, 1);
     const ease = 1 - Math.pow(1 - p, 3);
     const val  = prev + (target - prev) * ease;
-    el.textContent = (isFloat || suffix==='%'
-      ? val.toFixed(1)
-      : Math.round(val).toLocaleString()) + suffix;
+    el.textContent = (suffix==='%' ? val.toFixed(1) : Math.round(val).toLocaleString()) + suffix;
     if (p < 1) requestAnimationFrame(tick);
   }
-  el.classList.remove('val-update');
-  void el.offsetWidth; // reflow
+  el.classList.remove('val-update'); void el.offsetWidth;
   el.classList.add('val-update');
   requestAnimationFrame(tick);
 }
 
-// ── real-time ticker (never stopped) ─────────────────────────────────────────
-const REFRESH = 60;          // seconds between auto-refreshes
-let lastLoadedAt = null;     // Date.now() of last successful data load
-let refreshing   = false;    // guard against overlapping fetches
-
+// ── real-time ticker ──────────────────────────────────────────────────────────
+const REFRESH = 60;
+let lastLoadedAt = null, refreshing = false;
 setInterval(() => {
   if (!lastLoadedAt) return;
   const sec = Math.floor((Date.now() - lastLoadedAt) / 1000);
-
-  // "Updated Xs ago" — ticks every second
   const luEl = document.getElementById('last-updated');
   if (luEl) {
     if      (sec <  5)  luEl.innerHTML = 'Updated <strong>just now</strong>';
     else if (sec < 60)  luEl.innerHTML = `Updated <strong>${sec}s ago</strong>`;
     else                luEl.innerHTML = `Updated <strong>${Math.floor(sec/60)}m ${sec%60}s ago</strong>`;
   }
-
-  // countdown label + bar
   const remain = Math.max(0, REFRESH - sec);
   const lbl = document.getElementById('refresh-label');
   const bar = document.getElementById('refresh-bar');
-  if (lbl) lbl.textContent = remain > 0 ? `Refreshing in ${remain}s` : 'Refreshing…';
-  if (bar) {
-    bar.style.transition = 'width 1s linear';
-    bar.style.width = (remain / REFRESH * 100) + '%';
-  }
-
-  // auto-trigger
+  if (lbl) lbl.textContent = remain > 0 ? `Refresh in ${remain}s` : 'Refreshing…';
+  if (bar) { bar.style.transition='width 1s linear'; bar.style.width=(remain/REFRESH*100)+'%'; }
   if (sec >= REFRESH && !refreshing) loadAll(false);
 }, 1000);
 
-// ── date helpers ──────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 function today()      { return new Date().toISOString().slice(0,10); }
 function monthStart() { const d=new Date(); d.setDate(1); return d.toISOString().slice(0,10); }
-
 document.getElementById('f-start').value = monthStart();
 document.getElementById('f-end').value   = today();
-
 function params() {
   return new URLSearchParams({
     machine: document.getElementById('f-machine').value,
@@ -410,81 +256,68 @@ function params() {
   });
 }
 
-// ── load all ─────────────────────────────────────────────────────────────────
-async function loadAll(auto=false) {
+// ── load all ──────────────────────────────────────────────────────────────────
+async function loadAll() {
   if (refreshing) return;
   refreshing = true;
-
-  // reset bar to full immediately so it starts draining again
   const bar = document.getElementById('refresh-bar');
-  if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; }
-
-  const p = params();
+  if (bar) { bar.style.transition='none'; bar.style.width='100%'; }
   try {
     const [d1, d2] = await Promise.all([
-      fetch('/api/dashboard?' + p).then(r=>r.json()).catch(()=>({})),
-      fetch('/api/analytics?'  + p).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/dashboard?' + params()).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/analytics?'  + params()).then(r=>r.json()).catch(()=>({})),
     ]);
     if (!d1.error && d1.kpis) renderMain(d1);
     if (!d2.error)             renderAnalytics(d2);
   } finally {
-    lastLoadedAt = Date.now();
-    refreshing   = false;
-    const luEl = document.getElementById('last-updated');
-    if (luEl) luEl.innerHTML = 'Updated <strong>just now</strong>';
+    lastLoadedAt = Date.now(); refreshing = false;
+    const el = document.getElementById('last-updated');
+    if (el) el.innerHTML = 'Updated <strong>just now</strong>';
   }
 }
 
-// ── main render ───────────────────────────────────────────────────────────────
+// ── main ─────────────────────────────────────────────────────────────────────
 function renderMain(d) {
   const k = d.kpis;
-  const defects     = k.under + k.over + k.metal;
-  const defectRate  = k.bags > 0 ? defects / k.bags * 100 : 0;
-
-  animNum(document.getElementById('kpi-sessions'),   k.sessions);
-  animNum(document.getElementById('kpi-bags'),       k.bags);
-  animNum(document.getElementById('kpi-rate'),       k.pass_rate, '%');
-  animNum(document.getElementById('kpi-defect'),     parseFloat(defectRate.toFixed(1)), '%');
-  animNum(document.getElementById('kpi-under'),      k.under);
-  animNum(document.getElementById('kpi-over'),       k.over);
-
-  // progress bars
+  const defects    = k.under + k.over + k.metal;
+  const defectRate = k.bags > 0 ? defects / k.bags * 100 : 0;
+  animNum(document.getElementById('kpi-sessions'), k.sessions);
+  animNum(document.getElementById('kpi-bags'),     k.bags);
+  animNum(document.getElementById('kpi-rate'),     k.pass_rate, '%');
+  animNum(document.getElementById('kpi-defect'),   parseFloat(defectRate.toFixed(1)), '%');
+  animNum(document.getElementById('kpi-under'),    k.under);
+  animNum(document.getElementById('kpi-over'),     k.over);
   setTimeout(()=>{
     const rb = document.getElementById('kpi-rate-bar');
     const db = document.getElementById('kpi-defect-bar');
-    if (rb) rb.style.width = Math.min(k.pass_rate, 100) + '%';
-    if (db) db.style.width = Math.min(defectRate, 100) + '%';
+    if (rb) rb.style.width = Math.min(k.pass_rate,100)+'%';
+    if (db) db.style.width = Math.min(defectRate,100)+'%';
   }, 80);
 
-  // donut
   mkChart('donut-chart', {
-    type: 'doughnut',
-    data: { labels: d.donut.labels,
-            datasets:[{data:d.donut.data,
-              backgroundColor:['rgba(48,209,88,.85)','rgba(255,159,10,.85)','rgba(255,69,58,.85)'],
-              borderWidth:0, hoverOffset:6}] },
-    options: {
-      animation: chartAnim, cutout:'68%',
+    type:'doughnut',
+    data:{ labels:d.donut.labels,
+           datasets:[{data:d.donut.data,
+             backgroundColor:['rgba(48,209,88,.85)','rgba(255,159,10,.85)','rgba(255,69,58,.85)'],
+             borderWidth:0, hoverOffset:4}] },
+    options:{ animation:chartAnim, cutout:'70%',
       plugins:{ legend:{ position:'bottom',
-        labels:{color:C.text2, padding:12, font:{size:11}} } }
-    }
+        labels:{color:C.text2, padding:8, font:{size:10}, boxWidth:10} } } }
   });
 
-  // daily bar
   mkChart('bar-daily', {
     type:'bar',
     data:{ labels:d.daily.labels,
            datasets:[{label:'Bags', data:d.daily.data,
-             backgroundColor:'rgba(10,132,255,0.65)', borderColor:C.accent,
-             borderWidth:1, borderRadius:4, borderSkipped:false}] },
+             backgroundColor:'rgba(10,132,255,0.6)', borderColor:C.accent,
+             borderWidth:1, borderRadius:3, ...slimBar}] },
     options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
               scales:baseScales, plugins:noLegend }
   });
 
-  // recent sessions
-  const rb = document.getElementById('recent-body');
-  rb.innerHTML = !d.recent.length
-    ? `<tr><td colspan="7" style="text-align:center;padding:28px;color:${C.text3}">No data</td></tr>`
+  const rb2 = document.getElementById('recent-body');
+  rb2.innerHTML = !d.recent.length
+    ? `<tr><td colspan="7" style="text-align:center;padding:20px;color:${C.text3}">No data</td></tr>`
     : d.recent.map(r=>`<tr>
         <td><strong style="color:${C.accent}">#${r.prod_id}</strong></td>
         <td>${r.machine}</td><td>${r.lot}</td>
@@ -495,107 +328,96 @@ function renderMain(d) {
       </tr>`).join('');
 }
 
-// ── analytics render ──────────────────────────────────────────────────────────
+// ── analytics ─────────────────────────────────────────────────────────────────
 function renderAnalytics(d) {
-  if (d.avg_throughput !== undefined) {
-    animNum(document.getElementById('kpi-throughput'), d.avg_throughput, '');
-  }
+  if (d.avg_throughput !== undefined)
+    animNum(document.getElementById('kpi-throughput'), d.avg_throughput);
 
-  // FPY trend
   mkChart('fpy-trend', {
     type:'line',
-    data:{ labels: d.fpy_trend?.map(x=>x.date) ?? [],
-           datasets:[{label:'FPY %', data:d.fpy_trend?.map(x=>x.fpy) ?? [],
-             borderColor:C.green, backgroundColor:'rgba(48,209,88,0.08)',
-             fill:true, tension:0.4, pointRadius:4, pointHoverRadius:6,
-             pointBackgroundColor:C.green, pointBorderColor:'#000', pointBorderWidth:1.5}] },
+    data:{ labels:d.fpy_trend?.map(x=>x.date)??[],
+           datasets:[{label:'FPY %', data:d.fpy_trend?.map(x=>x.fpy)??[],
+             borderColor:C.green, backgroundColor:'rgba(48,209,88,0.07)',
+             fill:true, tension:0.4, pointRadius:3, pointHoverRadius:5,
+             pointBackgroundColor:C.green, borderWidth:2}] },
     options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:tickOpts,grid:gridOpts}, y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
+      scales:{ x:{ticks:tickOpts,grid:gridOpts},
+               y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{ label: ctx=>
-          `FPY: ${ctx.raw}%  (${d.fpy_trend?.[ctx.dataIndex]?.bags??''} bags)` } } }
-    }
+        tooltip:{ callbacks:{ label:ctx=>
+          `FPY: ${ctx.raw}%  (${d.fpy_trend?.[ctx.dataIndex]?.bags??''} bags)` } } } }
   });
 
-  // Defect pareto
+  mkChart('shift-chart', {
+    type:'bar',
+    data:{ labels:d.shifts?.map(x=>x.shift)??[],
+           datasets:[{label:'FPY %', data:d.shifts?.map(x=>x.rate)??[],
+             backgroundColor:'rgba(90,200,250,.75)', borderRadius:4, ...slimBarH}] },
+    options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:tickOpts,grid:gridOpts,min:0,max:100},
+               y:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}} },
+      plugins:{ ...noLegend,
+        tooltip:{ callbacks:{ label:ctx=>
+          [`FPY: ${ctx.raw}%`,`Bags: ${d.shifts?.[ctx.dataIndex]?.bags??''}`] } } } }
+  });
+
+  mkChart('machine-chart', {
+    type:'bar',
+    data:{ labels:d.machines?.map(x=>x.machine)??[],
+           datasets:[{label:'FPY %', data:d.machines?.map(x=>x.rate)??[],
+             backgroundColor:'rgba(191,90,242,.75)', borderRadius:4, ...slimBarH}] },
+    options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:tickOpts,grid:gridOpts,min:0,max:100},
+               y:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}} },
+      plugins:{ ...noLegend,
+        tooltip:{ callbacks:{ label:ctx=>
+          [`FPY: ${ctx.raw}%`,`Bags: ${d.machines?.[ctx.dataIndex]?.bags??''}`] } } } }
+  });
+
   mkChart('defect-pareto', {
     type:'bar',
-    data:{ labels: d.defect_pareto?.labels ?? [],
-           datasets:[{data:d.defect_pareto?.data ?? [],
-             backgroundColor:['rgba(255,159,10,.85)','rgba(255,69,58,.85)','rgba(255,55,153,.85)'],
-             borderRadius:5, borderWidth:0}] },
+    data:{ labels:d.defect_pareto?.labels??[],
+           datasets:[{data:d.defect_pareto?.data??[],
+             backgroundColor:['rgba(255,159,10,.8)','rgba(255,69,58,.8)','rgba(255,55,153,.8)'],
+             borderRadius:4, ...slimBarH}] },
     options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:tickOpts,grid:gridOpts,beginAtZero:true},
-               y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
+               y:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}} },
       plugins:noLegend }
   });
 
-  // Shift FPY
-  mkChart('shift-chart', {
-    type:'bar',
-    data:{ labels: d.shifts?.map(x=>x.shift) ?? [],
-           datasets:[{label:'FPY %', data:d.shifts?.map(x=>x.rate) ?? [],
-             backgroundColor:'rgba(90,200,250,.8)', borderRadius:5, borderWidth:0}] },
-    options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:tickOpts,grid:gridOpts,min:0,max:100},
-               y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
-      plugins:{ ...noLegend,
-        tooltip:{ callbacks:{ label: ctx=>
-          [`FPY: ${ctx.raw}%`, `Bags: ${d.shifts?.[ctx.dataIndex]?.bags??''}`] } } }
-    }
-  });
-
-  // Machine FPY
-  mkChart('machine-chart', {
-    type:'bar',
-    data:{ labels: d.machines?.map(x=>x.machine) ?? [],
-           datasets:[{label:'FPY %', data:d.machines?.map(x=>x.rate) ?? [],
-             backgroundColor:'rgba(191,90,242,.8)', borderRadius:5, borderWidth:0}] },
-    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}},
-               y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
-      plugins:{ ...noLegend,
-        tooltip:{ callbacks:{ label: ctx=>
-          [`FPY: ${ctx.raw}%`, `Bags: ${d.machines?.[ctx.dataIndex]?.bags??''}`] } } }
-    }
-  });
-
-  // Product volume
   mkChart('product-chart', {
     type:'bar',
-    data:{ labels: d.products?.map(x=>x.product.length>14?x.product.slice(0,14)+'…':x.product) ?? [],
-           datasets:[{data:d.products?.map(x=>x.bags) ?? [],
-             backgroundColor:'rgba(48,209,88,.75)', borderRadius:4, borderWidth:0}] },
+    data:{ labels:d.products?.map(x=>x.product.length>12?x.product.slice(0,12)+'…':x.product)??[],
+           datasets:[{data:d.products?.map(x=>x.bags)??[],
+             backgroundColor:'rgba(48,209,88,.7)', borderRadius:4, ...slimBar}] },
     options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:{color:C.text2,font:{size:9},maxRotation:30},grid:{display:false}},
+      scales:{ x:{ticks:{color:C.text2,font:{size:9},maxRotation:25},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{ label: ctx=>
-          [`Bags: ${ctx.raw}`,`FPY: ${d.products?.[ctx.dataIndex]?.rate??''}%`] } } }
-    }
+        tooltip:{ callbacks:{ label:ctx=>
+          [`Bags: ${ctx.raw}`,`FPY: ${d.products?.[ctx.dataIndex]?.rate??''}%`] } } } }
   });
 
-  // Trading candlestick chart (TradingView Lightweight Charts)
-  renderTradingChart(d.candles ?? []);
-
-  // Hourly distribution
   mkChart('hourly-chart', {
     type:'bar',
-    data:{ labels: d.hourly?.map(x=>x.hour) ?? [],
-           datasets:[{data:d.hourly?.map(x=>x.bags) ?? [],
-             backgroundColor: d.hourly?.map(x=>
-               x.bags>0?'rgba(90,200,250,.75)':'rgba(84,84,88,.12)') ?? [],
-             borderRadius:3, borderWidth:0}] },
+    data:{ labels:d.hourly?.map(x=>x.hour)??[],
+           datasets:[{data:d.hourly?.map(x=>x.bags)??[],
+             backgroundColor:d.hourly?.map(x=>
+               x.bags>0?'rgba(90,200,250,.7)':'rgba(84,84,88,.1)')??[],
+             borderRadius:2, maxBarThickness:10, barPercentage:0.6,
+             categoryPercentage:0.6}] },
     options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text3,font:{size:8}},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} },
       plugins:noLegend }
   });
 
-  // Top sessions
+  renderTradingChart(d.candles??[]);
+
   const tb = document.getElementById('top-body');
   tb.innerHTML = !d.top_sessions?.length
-    ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:${C.text3}">No data</td></tr>`
+    ? `<tr><td colspan="6" style="text-align:center;padding:20px;color:${C.text3}">No data</td></tr>`
     : d.top_sessions.map((r,i)=>`<tr>
         <td><span style="color:${C.text3};font-size:10px">#${i+1}</span>
             <span style="margin-left:6px">${r.lot}</span></td>
@@ -605,7 +427,83 @@ function renderAnalytics(d) {
       </tr>`).join('');
 }
 
-// ── kick off ──────────────────────────────────────────────────────────────────
+// ── TradingView candlestick ───────────────────────────────────────────────────
+let candleChart = null;
+function renderTradingChart(candles) {
+  const container = document.getElementById('trading-chart');
+  if (!container || typeof LightweightCharts === 'undefined') return;
+  if (candleChart) { candleChart.remove(); candleChart = null; }
+  if (!candles.length) {
+    container.innerHTML = `<div class="state-box" style="height:260px"><span class="state-icon">◎</span>No weight data</div>`;
+    return;
+  }
+  candleChart = LightweightCharts.createChart(container, {
+    width: container.clientWidth, height: container.clientHeight || 260,
+    layout: { background:{type:'solid',color:'transparent'},
+              textColor:'rgba(235,235,245,0.5)',
+              fontFamily:'-apple-system,BlinkMacSystemFont,SF Pro Display,sans-serif',
+              fontSize:11 },
+    grid: { vertLines:{color:'rgba(84,84,88,0.15)',style:1},
+            horzLines:{color:'rgba(84,84,88,0.15)',style:1} },
+    crosshair: { mode:LightweightCharts.CrosshairMode.Normal,
+      vertLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'},
+      horzLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'} },
+    rightPriceScale: { borderColor:'rgba(84,84,88,0.3)',
+                       scaleMargins:{top:0.08,bottom:0.28} },
+    timeScale: { borderColor:'rgba(84,84,88,0.3)', timeVisible:true, secondsVisible:false },
+    handleScroll:true, handleScale:true,
+  });
+
+  const candleSeries = candleChart.addCandlestickSeries({
+    upColor:'#30D158', downColor:'#FF453A',
+    borderUpColor:'#30D158', borderDownColor:'#FF453A',
+    wickUpColor:'#30D158', wickDownColor:'#FF453A',
+    priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
+  });
+  const volSeries = candleChart.addHistogramSeries({
+    color:'rgba(10,132,255,0.3)', priceFormat:{type:'volume',precision:0},
+    priceScaleId:'vol',
+  });
+  candleChart.priceScale('vol').applyOptions({ scaleMargins:{top:0.78,bottom:0} });
+  const avgLine = candleChart.addLineSeries({
+    color:'rgba(90,200,250,0.5)', lineWidth:1,
+    lineStyle:LightweightCharts.LineStyle.Dashed,
+    priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
+  });
+
+  candleSeries.setData(candles.map(c=>({
+    time:c.time, open:c.open, high:c.high, low:c.low, close:c.close,
+    color:c.color, wickColor:c.color, borderColor:c.color,
+  })));
+  volSeries.setData(candles.map(c=>({
+    time:c.time, value:c.volume,
+    color:c.color==='#30D158'?'rgba(48,209,88,0.3)'
+         :c.color==='#FF9F0A'?'rgba(255,159,10,0.3)':'rgba(255,69,58,0.3)',
+  })));
+  avgLine.setData(candles.map(c=>({time:c.time, value:c.avg})));
+  candleChart.timeScale().fitContent();
+
+  const tip = document.getElementById('candle-tooltip');
+  candleChart.subscribeCrosshairMove(param => {
+    if (!tip) return;
+    if (!param.point || !param.seriesData?.size) { tip.innerHTML=''; return; }
+    const bar = param.seriesData.get(candleSeries);
+    const meta = candles.find(c=>c.time===(param.time??0));
+    if (bar && meta) {
+      const col = meta.rate>=95?'#30D158':meta.rate>=80?'#FF9F0A':'#FF453A';
+      tip.innerHTML =
+        `<span style="color:${col};font-weight:700">${meta.rate}% FPY</span>` +
+        ` · <strong>${meta.lot}</strong>` +
+        ` · H:<strong>${bar.high.toLocaleString()}</strong>` +
+        ` A:<strong>${meta.avg.toLocaleString()}</strong>` +
+        ` L:<strong>${bar.low.toLocaleString()}</strong> g` +
+        ` · <span style="color:${C.text3}">${meta.volume} bags</span>`;
+    }
+  });
+  new ResizeObserver(()=>{ if(candleChart) candleChart.applyOptions({width:container.clientWidth}); })
+    .observe(container);
+}
+
 loadAll();
 </script>
 {% endblock %}
