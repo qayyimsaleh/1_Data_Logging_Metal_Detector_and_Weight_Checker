@@ -222,6 +222,11 @@ class ProductionApp:
         except Exception as e:
             self.log.warning(f"Apply machine failed: {e}")
             self.machine_name = name
+        if self.app_session_id:
+            try:
+                self.db.call_sp("sp_AppSetMachine", [self.app_session_id, self.machine_name])
+            except Exception as e:
+                self.log.warning(f"App uptime machine update failed: {e}")
 
     def _do_login(self):
         u, p = sanitize(self._login_user.get(), 50), self._login_pass.get()

@@ -44,7 +44,7 @@ CONN_STR = (
 ALLOWED_PROCEDURES = frozenset([
     "sp_VerifyUser", "sp_GetMachineByIP", "sp_GetAllMachines", "sp_GetMachineByName",
     "sp_GetAllMachinesDetail", "sp_AddMachine", "sp_UpdateMachineByName", "sp_DeleteMachine",
-    "sp_AppStarted", "sp_AppStopped",
+    "sp_AppStarted", "sp_AppStopped", "sp_AppSetMachine",
     "sp_GetNextProductionId", "sp_GetNextLogId",
     "sp_InsertUpdateProductionSession", "sp_InsertLogEntry",
     "sp_GetProductionReport", "sp_GetSessionDetails",
