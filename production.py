@@ -58,6 +58,7 @@ class ProductionApp:
         self.root = root
         self.root.title(f"{APP_TITLE} - Production v{APP_VERSION}")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._start_time = datetime.now()
         self.log = make_logger("production")
         self.db = DB(self.log)
         if not self.db.connect():
@@ -265,6 +266,11 @@ class ProductionApp:
             ttk.Label(g, text=v, font=("Segoe UI", 9),
                       background=C["bg_card"], foreground=clr).grid(row=i, column=1, sticky="w", pady=2)
         btm = ttk.Frame(m, style="Dark.TFrame"); btm.pack(fill="x", padx=28, pady=8)
+        uptime_h = (datetime.now() - self._start_time).total_seconds() / 3600
+        if uptime_h >= 12:
+            ttk.Label(btm, text=f"App running {uptime_h:.0f}h — restart at next shift change.",
+                      font=("Segoe UI", 9), background=C["bg_dark"],
+                      foreground=C["orange"]).pack(side="left")
         ttk.Button(btm, text="Logout", command=self._logout, style="Ghost.TButton").pack(side="right")
 
     def _launch_reports(self):
@@ -734,10 +740,20 @@ class ProductionApp:
     # No health_check on main thread touching sockets (was causing race).
     # ═══════════════════════════════════════════════════
 
+    @staticmethod
+    def _set_keepalive(sock):
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            # Windows: probe after 10s idle, every 3s, 5 probes before giving up
+            sock.ioctl(socket.SIO_KEEPALIVE_VALS, (1, 10_000, 3_000))
+        except (AttributeError, OSError):
+            pass  # non-Windows or unavailable
+
     def _conn_w(self):
         self._disc_w()
         try:
             self.w_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._set_keepalive(self.w_sock)
             self.w_sock.settimeout(5)
             self.w_sock.connect((self.weigher_ip, self.weigher_port))
             self.w_sock.settimeout(0.5)
@@ -759,6 +775,7 @@ class ProductionApp:
         self._disc_m()
         try:
             self.m_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._set_keepalive(self.m_sock)
             self.m_sock.settimeout(10)
             self.m_sock.connect((self.metal_ip, self.metal_port))
             self.m_sock.settimeout(0.5)
@@ -848,9 +865,13 @@ class ProductionApp:
         self.log.info("Monitoring loop started...")
         last_w_reconnect = datetime.now()
         last_m_reconnect = datetime.now()
-        last_w_data = datetime.now()   # watchdog: last time WC sent real data
-        last_m_data = datetime.now()   # watchdog: last time MD sent real data
-        SILENT_TIMEOUT = 300           # 5 min with no data → force reconnect
+        last_w_data    = datetime.now()   # watchdog: last time WC sent real data
+        last_m_data    = datetime.now()   # watchdog: last time MD sent real data
+        last_db_refresh = datetime.now()  # proactive DB keepalive
+        last_heartbeat  = datetime.now()  # hourly alive log
+        SILENT_TIMEOUT = 300              # 5 min with no data → force reconnect
+        DB_REFRESH_SECS = 1800            # refresh DB connection every 30 min
+        HEARTBEAT_SECS  = 3600           # log heartbeat every hour
 
         while not self.stop_evt.is_set():
             try:
@@ -954,6 +975,22 @@ class ProductionApp:
                 if (now - self.last_match_debug).total_seconds() > 30:
                     self.log.info(f"Queues: W={len(self.w_queue)} M={len(self.m_queue)}")
                     self.last_match_debug = now
+
+                # --- Proactive DB keepalive & hourly heartbeat ---
+                if (now - last_db_refresh).total_seconds() > DB_REFRESH_SECS:
+                    try:
+                        self.db.ensure()
+                        self.log.info("DB keepalive OK")
+                    except Exception as e:
+                        self.log.warning(f"DB keepalive failed: {e}")
+                    last_db_refresh = now
+                if (now - last_heartbeat).total_seconds() > HEARTBEAT_SECS:
+                    self.log.info(
+                        f"Heartbeat | running={self.running} "
+                        f"W={'up' if self.w_sock else 'down'} "
+                        f"M={'up' if self.m_sock else 'N/A' if not self.metal_ip else 'down'} "
+                        f"wq={len(self.w_queue)} mq={len(self.m_queue)}")
+                    last_heartbeat = now
 
                 # --- Silent-disconnect watchdog ---
                 # If socket appears connected but no data in SILENT_TIMEOUT seconds,
