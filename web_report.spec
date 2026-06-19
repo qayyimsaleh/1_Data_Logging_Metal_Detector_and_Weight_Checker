@@ -10,8 +10,22 @@ a = Analysis(
     ],
     hiddenimports=[
         'flask', 'werkzeug', 'jinja2', 'markupsafe', 'click',
-        'itsdangerous', 'pyodbc', 'openpyxl',
-        'reportlab', 'reportlab.graphics', 'shared_config',
+        'itsdangerous', 'pyodbc', 'openpyxl', 'shared_config',
+        # reportlab — must list submodules explicitly (dynamic imports)
+        'reportlab',
+        'reportlab.lib', 'reportlab.lib.colors', 'reportlab.lib.enums',
+        'reportlab.lib.pagesizes', 'reportlab.lib.styles', 'reportlab.lib.units',
+        'reportlab.lib.utils', 'reportlab.lib.fonts', 'reportlab.lib.geomutils',
+        'reportlab.platypus', 'reportlab.platypus.tables',
+        'reportlab.platypus.paragraph', 'reportlab.platypus.flowables',
+        'reportlab.platypus.doctemplate', 'reportlab.platypus.frames',
+        'reportlab.pdfgen', 'reportlab.pdfgen.canvas',
+        'reportlab.pdfbase', 'reportlab.pdfbase.pdfmetrics',
+        'reportlab.pdfbase.ttfonts', 'reportlab.pdfbase._fontdata',
+        'reportlab.graphics', 'reportlab.graphics.shapes',
+        'reportlab.rl_config', 'reportlab.rl_settings',
+        # Pillow — required by reportlab
+        'PIL', 'PIL.Image', 'PIL.ImageFont', 'PIL.ImageDraw',
     ],
     hookspath=[],
     hooksconfig={},
@@ -19,7 +33,7 @@ a = Analysis(
     excludes=[
         # heavy unused scientific stack
         'numpy', 'pandas', 'scipy', 'matplotlib',
-        'PIL', 'Pillow', 'cv2', 'sklearn', 'skimage',
+        'cv2', 'sklearn', 'skimage',
         # GUI toolkits not needed
         'tkinter', '_tkinter', 'tkinter.ttk',
         'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'wx',
