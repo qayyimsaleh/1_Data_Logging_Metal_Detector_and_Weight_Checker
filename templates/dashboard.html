@@ -226,7 +226,7 @@ function animNum(el, target, suffix='', duration=900) {
 }
 
 // ── real-time ticker ──────────────────────────────────────────────────────────
-const REFRESH = 60;
+const REFRESH = 30;
 let lastLoadedAt = null, refreshing = false;
 setInterval(() => {
   if (!lastLoadedAt) return;
