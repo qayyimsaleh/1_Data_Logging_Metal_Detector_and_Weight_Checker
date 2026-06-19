@@ -422,9 +422,11 @@ def shutdown():
 def main():
     if not db.connect():
         log.warning("DB connection failed — app will show errors on data load")
+    from shared_config import get_local_ip
+    local_ip = get_local_ip()
     threading.Timer(1.2, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
-    log.info(f"Web report server on http://localhost:{PORT}")
-    app.run(host='localhost', port=PORT, debug=False, use_reloader=False)
+    log.info(f"Web report server on http://{local_ip}:{PORT} (network) / http://localhost:{PORT} (local)")
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
     main()
