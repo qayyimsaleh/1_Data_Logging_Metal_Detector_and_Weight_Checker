@@ -29,14 +29,30 @@
       <a href="/reports" class="nav-link {% if active=='reports'   %}active{% endif %}">Reports</a>
     </div>
 
+    <!-- live clock -->
+    <span id="live-clock" style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;
+          letter-spacing:.02em;margin-left:4px"></span>
+
   </div>
 </nav>
+<!-- refresh countdown bar -->
+<div class="refresh-wrap"><div class="refresh-bar" id="refresh-bar" style="width:100%"></div></div>
 
 <main class="main-content">
   {% block content %}{% endblock %}
 </main>
 
 <script>
+// live clock
+(function clock() {
+  const el = document.getElementById('live-clock');
+  if (el) {
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+  setTimeout(clock, 1000);
+})();
+
 async function confirmShutdown() {
   if (!confirm('Stop the analytics server?')) return;
   try { await fetch('/shutdown', {method:'POST'}); } catch(e) {}

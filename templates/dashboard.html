@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+
+<!-- status bar -->
+<div class="status-bar">
+  <span><span class="live-dot"></span><strong>Live</strong></span>
+  <span id="last-updated">—</span>
+  <span style="margin-left:auto;color:var(--text3)" id="refresh-label">—</span>
+</div>
+
+<!-- filter row -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px">
   <h1 class="page-title" style="margin-bottom:0">Production Dashboard</h1>
   <div class="filter-bar" style="margin-bottom:0">
     <div class="filter-group">
       <label class="filter-label">Machine</label>
-      <select id="f-machine" class="filter-select" style="min-width:160px">
+      <select id="f-machine" class="filter-select" style="min-width:155px">
         <option value="">All Lines</option>
         {% for m in machines %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
       </select>
@@ -18,33 +27,73 @@
       <label class="filter-label">To</label>
       <input id="f-end" type="date" class="filter-input">
     </div>
-    <button class="btn btn-accent" onclick="loadAll()">Refresh</button>
+    <button class="btn btn-accent" onclick="loadAll(true)">Refresh</button>
   </div>
 </div>
 
-<!-- ── KPI Cards ─────────────────────────────────────────────────────────── -->
-<div class="kpi-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:16px">
-  <div class="kpi-card"><div class="kpi-label">Sessions</div>
-    <div class="kpi-value kpi-accent" id="kpi-sessions">—</div></div>
-  <div class="kpi-card"><div class="kpi-label">Total Bags</div>
-    <div class="kpi-value kpi-blue" id="kpi-bags">—</div></div>
-  <div class="kpi-card"><div class="kpi-label">FPY</div>
-    <div class="kpi-value kpi-green" id="kpi-rate">—</div>
-    <div class="kpi-sub">First Pass Yield</div></div>
-  <div class="kpi-card"><div class="kpi-label">Defect Rate</div>
-    <div class="kpi-value kpi-red" id="kpi-defect">—</div>
-    <div class="kpi-sub">Under+Over+Metal</div></div>
-  <div class="kpi-card"><div class="kpi-label">Under Weight</div>
-    <div class="kpi-value kpi-orange" id="kpi-under">—</div></div>
-  <div class="kpi-card"><div class="kpi-label">Over Weight</div>
-    <div class="kpi-value kpi-red" id="kpi-over">—</div></div>
-  <div class="kpi-card"><div class="kpi-label">Throughput</div>
-    <div class="kpi-value kpi-blue" id="kpi-throughput">—</div>
-    <div class="kpi-sub">bags / hour avg</div></div>
+<!-- ── KPI Cards ── -->
+<div class="kpi-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:14px">
+
+  <div class="kpi-card anim-in d1">
+    <div class="kpi-accent-bar" style="background:var(--accent)"></div>
+    <div class="kpi-label">Sessions</div>
+    <div class="kpi-value kpi-accent" id="kpi-sessions">
+      <span class="skel">000</span></div>
+  </div>
+
+  <div class="kpi-card anim-in d2">
+    <div class="kpi-accent-bar" style="background:var(--teal)"></div>
+    <div class="kpi-label">Total Bags</div>
+    <div class="kpi-value kpi-blue" id="kpi-bags">
+      <span class="skel">0000</span></div>
+  </div>
+
+  <div class="kpi-card anim-in d3">
+    <div class="kpi-accent-bar" style="background:var(--green)"></div>
+    <div class="kpi-label">FPY</div>
+    <div class="kpi-value kpi-green" id="kpi-rate">
+      <span class="skel">00%</span></div>
+    <div class="kpi-sub">First Pass Yield</div>
+    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-rate-bar"
+         style="background:var(--green)"></div></div>
+  </div>
+
+  <div class="kpi-card anim-in d4">
+    <div class="kpi-accent-bar" style="background:var(--red)"></div>
+    <div class="kpi-label">Defect Rate</div>
+    <div class="kpi-value kpi-red" id="kpi-defect">
+      <span class="skel">0%</span></div>
+    <div class="kpi-sub">Under + Over + Metal</div>
+    <div class="kpi-prog"><div class="kpi-prog-fill" id="kpi-defect-bar"
+         style="background:var(--red)"></div></div>
+  </div>
+
+  <div class="kpi-card anim-in d5">
+    <div class="kpi-accent-bar" style="background:var(--orange)"></div>
+    <div class="kpi-label">Under Weight</div>
+    <div class="kpi-value kpi-orange" id="kpi-under">
+      <span class="skel">00</span></div>
+  </div>
+
+  <div class="kpi-card anim-in d6">
+    <div class="kpi-accent-bar" style="background:var(--red)"></div>
+    <div class="kpi-label">Over Weight</div>
+    <div class="kpi-value kpi-red" id="kpi-over">
+      <span class="skel">00</span></div>
+  </div>
+
+  <div class="kpi-card anim-in d7">
+    <div class="kpi-accent-bar" style="background:var(--purple)"></div>
+    <div class="kpi-label">Throughput</div>
+    <div class="kpi-value" style="color:var(--purple)" id="kpi-throughput">
+      <span class="skel">000</span></div>
+    <div class="kpi-sub">bags / hour avg</div>
+  </div>
+
 </div>
 
-<!-- ── Row 1: Pass/Fail breakdown + Daily trend ───────────────────────────── -->
-<div class="chart-row" style="margin-bottom:14px">
+<!-- ── Row 1: Donut + Daily ── -->
+<div class="chart-row anim-in d2" style="margin-bottom:12px">
   <div class="chart-card">
     <div class="chart-card-title">Pass / Fail Breakdown</div>
     <div style="height:220px;display:flex;align-items:center;justify-content:center">
@@ -57,8 +106,9 @@
   </div>
 </div>
 
-<!-- ── Row 2: FPY Trend (wide) + Defect Pareto ────────────────────────────── -->
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+<!-- ── Row 2: FPY Trend + Defect Pareto ── -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px"
+     class="anim-in d3">
   <div class="chart-card">
     <div class="chart-card-title">FPY Trend — First Pass Yield by Day (%)</div>
     <div style="height:200px"><canvas id="fpy-trend"></canvas></div>
@@ -69,8 +119,9 @@
   </div>
 </div>
 
-<!-- ── Row 3: Shift / Machine / Product ───────────────────────────────────── -->
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+<!-- ── Row 3: Shift / Machine / Product ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px"
+     class="anim-in d4">
   <div class="chart-card">
     <div class="chart-card-title">FPY by Shift (%)</div>
     <div style="height:200px"><canvas id="shift-chart"></canvas></div>
@@ -85,8 +136,9 @@
   </div>
 </div>
 
-<!-- ── Row 4: Weight Trend + Hourly distribution ──────────────────────────── -->
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+<!-- ── Row 4: Weight Trend + Hourly ── -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px"
+     class="anim-in d5">
   <div class="chart-card">
     <div class="chart-card-title">Weight Trend — Avg / Min / Max per Session (g)</div>
     <div style="height:200px"><canvas id="weight-trend"></canvas></div>
@@ -97,9 +149,9 @@
   </div>
 </div>
 
-<!-- ── Recent + Top Sessions ──────────────────────────────────────────────── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-  <!-- Top 5 by volume -->
+<!-- ── Tables ── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px"
+     class="anim-in d6">
   <div>
     <div class="section-title">Top Sessions by Volume</div>
     <div class="table-wrap">
@@ -107,12 +159,11 @@
         <table><thead><tr>
           <th>Lot</th><th>Product</th><th>Shift</th><th>Machine</th><th>Bags</th><th>FPY</th>
         </tr></thead>
-        <tbody id="top-body"><tr><td colspan="6" style="text-align:center;padding:30px">
+        <tbody id="top-body"><tr><td colspan="6" style="text-align:center;padding:32px">
           <span class="spinner"></span></td></tr></tbody></table>
       </div>
     </div>
   </div>
-  <!-- Recent sessions -->
   <div>
     <div class="section-title">Recent Sessions</div>
     <div class="table-wrap">
@@ -120,18 +171,19 @@
         <table><thead><tr>
           <th>ID</th><th>Machine</th><th>Lot</th><th>Total</th><th>Pass</th><th>FPY</th><th>First</th>
         </tr></thead>
-        <tbody id="recent-body"><tr><td colspan="7" style="text-align:center;padding:30px">
+        <tbody id="recent-body"><tr><td colspan="7" style="text-align:center;padding:32px">
           <span class="spinner"></span></td></tr></tbody></table>
       </div>
     </div>
   </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-// ── chart instances ──────────────────────────────────────────────────────────
+// ── chart registry ────────────────────────────────────────────────────────────
 const charts = {};
 function mkChart(id, cfg) {
   if (charts[id]) charts[id].destroy();
@@ -140,27 +192,75 @@ function mkChart(id, cfg) {
   charts[id] = new Chart(ctx, cfg);
 }
 
-// ── colour palette (macOS system colours) ────────────────────────────────────
+// ── macOS system colour palette ───────────────────────────────────────────────
 const C = {
   accent:'#0A84FF', green:'#30D158', red:'#FF453A', orange:'#FF9F0A',
-  blue:'#5AC8FA',   purple:'#BF5AF2',
+  blue:'#5AC8FA', purple:'#BF5AF2', yellow:'#FFD60A',
   text2:'rgba(235,235,245,0.60)', text3:'rgba(235,235,245,0.30)',
   border:'rgba(84,84,88,0.65)', sep:'rgba(84,84,88,0.30)',
-  bg_mid:'#1c1c1e',
 };
-const gridOpts = { color: C.border };
-const tickOpts = { color: C.text3, font:{size:10} };
-const baseScales = { x:{ticks:tickOpts,grid:gridOpts}, y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} };
-const noLegend = { legend:{display:false} };
+const gridOpts   = { color: C.sep };
+const tickOpts   = { color: C.text3, font:{size:10} };
+const baseScales = {
+  x:{ ticks:tickOpts, grid:gridOpts },
+  y:{ ticks:tickOpts, grid:gridOpts, beginAtZero:true },
+};
+const noLegend   = { legend:{display:false} };
+const chartAnim  = { duration:700, easing:'easeOutQuart' };
 
-// ── date helpers ─────────────────────────────────────────────────────────────
+// ── animated number counter ───────────────────────────────────────────────────
+function animNum(el, target, suffix='', duration=950) {
+  const prev = parseFloat(el.dataset.prev ?? 0) || 0;
+  el.dataset.prev = target;
+  const t0 = performance.now();
+  const isFloat = suffix === '%' && !Number.isInteger(target);
+  function tick(now) {
+    const p    = Math.min((now - t0) / duration, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    const val  = prev + (target - prev) * ease;
+    el.textContent = (isFloat || suffix==='%'
+      ? val.toFixed(1)
+      : Math.round(val).toLocaleString()) + suffix;
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  el.classList.remove('val-update');
+  void el.offsetWidth; // reflow
+  el.classList.add('val-update');
+  requestAnimationFrame(tick);
+}
+
+// ── auto-refresh (60s countdown) ─────────────────────────────────────────────
+const REFRESH = 60;
+let _timer, _rem = REFRESH;
+function startRefresh() {
+  clearInterval(_timer);
+  _rem = REFRESH;
+  _tick();
+  _timer = setInterval(_tick, 1000);
+}
+function _tick() {
+  const bar = document.getElementById('refresh-bar');
+  const lbl = document.getElementById('refresh-label');
+  if (bar) {
+    bar.style.transition = _rem === REFRESH ? 'none' : 'width 1s linear';
+    bar.style.width = (_rem / REFRESH * 100) + '%';
+  }
+  if (lbl) lbl.textContent = `Auto-refresh in ${_rem}s`;
+  if (_rem-- <= 0) { _rem = REFRESH; loadAll(false); }
+}
+
+// ── date helpers ──────────────────────────────────────────────────────────────
 function today()      { return new Date().toISOString().slice(0,10); }
 function monthStart() { const d=new Date(); d.setDate(1); return d.toISOString().slice(0,10); }
+function nowStr()     {
+  return new Date().toLocaleTimeString('en-GB',
+    {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
 
 document.getElementById('f-start').value = monthStart();
 document.getElementById('f-end').value   = today();
 
-function getParams() {
+function params() {
   return new URLSearchParams({
     machine: document.getElementById('f-machine').value,
     start:   document.getElementById('f-start').value,
@@ -169,192 +269,208 @@ function getParams() {
 }
 
 // ── load all ─────────────────────────────────────────────────────────────────
-async function loadAll() {
-  const p = getParams();
+async function loadAll(resetTimer=true) {
+  if (resetTimer) startRefresh();
+  const p = params();
   const [d1, d2] = await Promise.all([
-    fetch('/api/dashboard?' + p).then(r=>r.json()),
-    fetch('/api/analytics?' + p).then(r=>r.json()),
+    fetch('/api/dashboard?' + p).then(r=>r.json()).catch(()=>({})),
+    fetch('/api/analytics?'  + p).then(r=>r.json()).catch(()=>({})),
   ]);
-  if (!d1.error) renderMain(d1);
-  if (!d2.error) renderAnalytics(d2);
+  if (!d1.error && d1.kpis) renderMain(d1);
+  if (!d2.error)             renderAnalytics(d2);
+  const el = document.getElementById('last-updated');
+  if (el) el.innerHTML = `Updated <strong>${nowStr()}</strong>`;
 }
 
-// ── main dashboard ───────────────────────────────────────────────────────────
+// ── main render ───────────────────────────────────────────────────────────────
 function renderMain(d) {
   const k = d.kpis;
-  const totalDefects = k.under + k.over + k.metal;
-  const defectRate   = k.bags > 0 ? (totalDefects / k.bags * 100).toFixed(1) : '0.0';
+  const defects     = k.under + k.over + k.metal;
+  const defectRate  = k.bags > 0 ? defects / k.bags * 100 : 0;
 
-  document.getElementById('kpi-sessions').textContent = k.sessions.toLocaleString();
-  document.getElementById('kpi-bags').textContent     = k.bags.toLocaleString();
-  document.getElementById('kpi-rate').textContent     = k.pass_rate + '%';
-  document.getElementById('kpi-defect').textContent   = defectRate + '%';
-  document.getElementById('kpi-under').textContent    = k.under.toLocaleString();
-  document.getElementById('kpi-over').textContent     = k.over.toLocaleString();
+  animNum(document.getElementById('kpi-sessions'),   k.sessions);
+  animNum(document.getElementById('kpi-bags'),       k.bags);
+  animNum(document.getElementById('kpi-rate'),       k.pass_rate, '%');
+  animNum(document.getElementById('kpi-defect'),     parseFloat(defectRate.toFixed(1)), '%');
+  animNum(document.getElementById('kpi-under'),      k.under);
+  animNum(document.getElementById('kpi-over'),       k.over);
+
+  // progress bars
+  setTimeout(()=>{
+    const rb = document.getElementById('kpi-rate-bar');
+    const db = document.getElementById('kpi-defect-bar');
+    if (rb) rb.style.width = Math.min(k.pass_rate, 100) + '%';
+    if (db) db.style.width = Math.min(defectRate, 100) + '%';
+  }, 80);
 
   // donut
   mkChart('donut-chart', {
     type: 'doughnut',
     data: { labels: d.donut.labels,
-            datasets:[{data:d.donut.data, backgroundColor:['rgba(48,209,88,0.85)','rgba(255,159,10,0.85)','rgba(255,69,58,0.85)'],
-                       borderWidth:0, hoverOffset:4}] },
-    options: { cutout:'68%',
-      plugins:{ legend:{ position:'bottom', labels:{color:C.text2,padding:10,font:{size:11}} } } }
+            datasets:[{data:d.donut.data,
+              backgroundColor:['rgba(48,209,88,.85)','rgba(255,159,10,.85)','rgba(255,69,58,.85)'],
+              borderWidth:0, hoverOffset:6}] },
+    options: {
+      animation: chartAnim, cutout:'68%',
+      plugins:{ legend:{ position:'bottom',
+        labels:{color:C.text2, padding:12, font:{size:11}} } }
+    }
   });
 
   // daily bar
   mkChart('bar-daily', {
     type:'bar',
     data:{ labels:d.daily.labels,
-           datasets:[{label:'Bags',data:d.daily.data,
-                      backgroundColor:'rgba(10,132,255,0.65)',borderColor:C.accent,
-                      borderWidth:1,borderRadius:3}] },
-    options:{ responsive:true, maintainAspectRatio:false,
+           datasets:[{label:'Bags', data:d.daily.data,
+             backgroundColor:'rgba(10,132,255,0.65)', borderColor:C.accent,
+             borderWidth:1, borderRadius:4, borderSkipped:false}] },
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
               scales:baseScales, plugins:noLegend }
   });
 
   // recent sessions
   const rb = document.getElementById('recent-body');
   rb.innerHTML = !d.recent.length
-    ? `<tr><td colspan="7" style="text-align:center;padding:20px;color:${C.text3}">No data</td></tr>`
+    ? `<tr><td colspan="7" style="text-align:center;padding:28px;color:${C.text3}">No data</td></tr>`
     : d.recent.map(r=>`<tr>
         <td><strong style="color:${C.accent}">#${r.prod_id}</strong></td>
         <td>${r.machine}</td><td>${r.lot}</td>
-        <td><strong>${r.total}</strong></td>
-        <td style="color:${C.green}">${r.pass}</td>
+        <td><strong>${r.total.toLocaleString()}</strong></td>
+        <td style="color:${C.green}">${r.pass.toLocaleString()}</td>
         <td><span class="pill ${r.rate>=95?'pill-pass':r.rate>=80?'pill-under':'pill-over'}">${r.rate}%</span></td>
         <td style="color:${C.text3};font-size:11px">${r.first}</td>
       </tr>`).join('');
 }
 
-// ── analytics ─────────────────────────────────────────────────────────────────
+// ── analytics render ──────────────────────────────────────────────────────────
 function renderAnalytics(d) {
-  // throughput
-  document.getElementById('kpi-throughput').textContent =
-    d.avg_throughput > 0 ? d.avg_throughput : '—';
+  if (d.avg_throughput !== undefined) {
+    animNum(document.getElementById('kpi-throughput'), d.avg_throughput, '');
+  }
 
-  // FPY trend (line)
+  // FPY trend
   mkChart('fpy-trend', {
     type:'line',
-    data:{ labels: d.fpy_trend.map(x=>x.date),
-           datasets:[{
-             label:'FPY %', data: d.fpy_trend.map(x=>x.fpy),
+    data:{ labels: d.fpy_trend?.map(x=>x.date) ?? [],
+           datasets:[{label:'FPY %', data:d.fpy_trend?.map(x=>x.fpy) ?? [],
              borderColor:C.green, backgroundColor:'rgba(48,209,88,0.08)',
-             fill:true, tension:0.4, pointRadius:3, pointBackgroundColor:C.green,
-           }] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:tickOpts,grid:gridOpts},
-               y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
+             fill:true, tension:0.4, pointRadius:4, pointHoverRadius:6,
+             pointBackgroundColor:C.green, pointBorderColor:'#000', pointBorderWidth:1.5}] },
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:tickOpts,grid:gridOpts}, y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{ label: ctx => `FPY: ${ctx.raw}%  (${d.fpy_trend[ctx.dataIndex]?.bags??''} bags)` } }
-      } }
+        tooltip:{ callbacks:{ label: ctx=>
+          `FPY: ${ctx.raw}%  (${d.fpy_trend?.[ctx.dataIndex]?.bags??''} bags)` } } }
+    }
   });
 
-  // Defect pareto (horizontal bar)
+  // Defect pareto
   mkChart('defect-pareto', {
     type:'bar',
-    data:{ labels: d.defect_pareto.labels,
-           datasets:[{data:d.defect_pareto.data,
-                      backgroundColor:['rgba(255,159,10,0.85)','rgba(255,69,58,0.85)','rgba(255,55,153,0.85)'],
-                      borderRadius:4, borderWidth:0}] },
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-              scales:{ x:{ticks:tickOpts,grid:gridOpts,beginAtZero:true},
-                       y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
-              plugins:noLegend }
+    data:{ labels: d.defect_pareto?.labels ?? [],
+           datasets:[{data:d.defect_pareto?.data ?? [],
+             backgroundColor:['rgba(255,159,10,.85)','rgba(255,69,58,.85)','rgba(255,55,153,.85)'],
+             borderRadius:5, borderWidth:0}] },
+    options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:{ x:{ticks:tickOpts,grid:gridOpts,beginAtZero:true},
+               y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
+      plugins:noLegend }
   });
 
-  // Shift FPY (horizontal bar)
+  // Shift FPY
   mkChart('shift-chart', {
     type:'bar',
-    data:{ labels: d.shifts.map(x=>x.shift),
-           datasets:[{label:'FPY %', data:d.shifts.map(x=>x.rate),
-                      backgroundColor:'rgba(90,200,250,0.8)', borderRadius:4, borderWidth:0}] },
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    data:{ labels: d.shifts?.map(x=>x.shift) ?? [],
+           datasets:[{label:'FPY %', data:d.shifts?.map(x=>x.rate) ?? [],
+             backgroundColor:'rgba(90,200,250,.8)', borderRadius:5, borderWidth:0}] },
+    options:{ indexAxis:'y', animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:tickOpts,grid:gridOpts,min:0,max:100},
                y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{
-          label: ctx => [`FPY: ${ctx.raw}%`, `Bags: ${d.shifts[ctx.dataIndex]?.bags??''}`]
-        } } }
+        tooltip:{ callbacks:{ label: ctx=>
+          [`FPY: ${ctx.raw}%`, `Bags: ${d.shifts?.[ctx.dataIndex]?.bags??''}`] } } }
     }
   });
 
-  // Machine FPY (bar)
+  // Machine FPY
   mkChart('machine-chart', {
     type:'bar',
-    data:{ labels: d.machines.map(x=>x.machine),
-           datasets:[{label:'FPY %', data:d.machines.map(x=>x.rate),
-                      backgroundColor:'rgba(191,90,242,0.8)', borderRadius:4, borderWidth:0}] },
-    options:{ responsive:true, maintainAspectRatio:false,
+    data:{ labels: d.machines?.map(x=>x.machine) ?? [],
+           datasets:[{label:'FPY %', data:d.machines?.map(x=>x.rate) ?? [],
+             backgroundColor:'rgba(191,90,242,.8)', borderRadius:5, borderWidth:0}] },
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{
-          label: ctx => [`FPY: ${ctx.raw}%`, `Bags: ${d.machines[ctx.dataIndex]?.bags??''}`]
-        } } }
+        tooltip:{ callbacks:{ label: ctx=>
+          [`FPY: ${ctx.raw}%`, `Bags: ${d.machines?.[ctx.dataIndex]?.bags??''}`] } } }
     }
   });
 
-  // Product volume (bar)
+  // Product volume
   mkChart('product-chart', {
     type:'bar',
-    data:{ labels: d.products.map(x=>x.product.length>12 ? x.product.slice(0,12)+'…' : x.product),
-           datasets:[{data:d.products.map(x=>x.bags),
-                      backgroundColor:'rgba(48,209,88,0.75)', borderRadius:3, borderWidth:0}] },
-    options:{ responsive:true, maintainAspectRatio:false,
+    data:{ labels: d.products?.map(x=>x.product.length>14?x.product.slice(0,14)+'…':x.product) ?? [],
+           datasets:[{data:d.products?.map(x=>x.bags) ?? [],
+             backgroundColor:'rgba(48,209,88,.75)', borderRadius:4, borderWidth:0}] },
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text2,font:{size:9},maxRotation:30},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} },
       plugins:{ ...noLegend,
-        tooltip:{ callbacks:{
-          label: ctx=>[`Bags: ${ctx.raw}`,`FPY: ${d.products[ctx.dataIndex]?.rate??''}%`]
-        } } }
+        tooltip:{ callbacks:{ label: ctx=>
+          [`Bags: ${ctx.raw}`,`FPY: ${d.products?.[ctx.dataIndex]?.rate??''}%`] } } }
     }
   });
 
-  // Weight trend (multi-line min/avg/max)
+  // Weight trend (avg/min/max)
   mkChart('weight-trend', {
     type:'line',
-    data:{ labels: d.weight_trend.map(x=>x.label),
+    data:{ labels: d.weight_trend?.map(x=>x.label) ?? [],
            datasets:[
-             {label:'Avg',  data:d.weight_trend.map(x=>x.avg),
-              borderColor:C.accent, tension:0.3, pointRadius:2, fill:false},
-             {label:'Max',  data:d.weight_trend.map(x=>x.max),
-              borderColor:'rgba(255,107,107,0.5)', tension:0.3, pointRadius:0,
-              borderDash:[4,3], fill:false},
-             {label:'Min',  data:d.weight_trend.map(x=>x.min),
-              borderColor:'rgba(255,179,71,0.5)', tension:0.3, pointRadius:0,
-              borderDash:[4,3], fill:false},
+             {label:'Avg', data:d.weight_trend?.map(x=>x.avg) ?? [],
+              borderColor:C.accent, tension:0.35, pointRadius:3, fill:false,
+              pointBackgroundColor:C.accent},
+             {label:'Max', data:d.weight_trend?.map(x=>x.max) ?? [],
+              borderColor:'rgba(255,69,58,.45)', tension:0.35,
+              pointRadius:0, borderDash:[4,3], fill:false},
+             {label:'Min', data:d.weight_trend?.map(x=>x.min) ?? [],
+              borderColor:'rgba(255,159,10,.45)', tension:0.35,
+              pointRadius:0, borderDash:[4,3], fill:false},
            ] },
-    options:{ responsive:true, maintainAspectRatio:false, scales:baseScales,
-      plugins:{ legend:{ labels:{color:C.text2,font:{size:11}} } } }
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:baseScales,
+      plugins:{ legend:{ labels:{color:C.text2,font:{size:11},
+        boxWidth:12, boxHeight:2} } } }
   });
 
-  // Hourly distribution (bar, hide zero hours at edges)
+  // Hourly distribution
   mkChart('hourly-chart', {
     type:'bar',
-    data:{ labels: d.hourly.map(x=>x.hour),
-           datasets:[{data:d.hourly.map(x=>x.bags),
-                      backgroundColor: d.hourly.map(x=>
-                        x.bags > 0 ? 'rgba(90,200,250,0.75)' : 'rgba(84,84,88,0.15)'),
-                      borderRadius:3, borderWidth:0}] },
-    options:{ responsive:true, maintainAspectRatio:false,
+    data:{ labels: d.hourly?.map(x=>x.hour) ?? [],
+           datasets:[{data:d.hourly?.map(x=>x.bags) ?? [],
+             backgroundColor: d.hourly?.map(x=>
+               x.bags>0?'rgba(90,200,250,.75)':'rgba(84,84,88,.12)') ?? [],
+             borderRadius:3, borderWidth:0}] },
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text3,font:{size:8}},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} },
       plugins:noLegend }
   });
 
-  // Top sessions table
+  // Top sessions
   const tb = document.getElementById('top-body');
-  tb.innerHTML = !d.top_sessions.length
-    ? `<tr><td colspan="6" style="text-align:center;padding:20px;color:${C.text3}">No data</td></tr>`
+  tb.innerHTML = !d.top_sessions?.length
+    ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:${C.text3}">No data</td></tr>`
     : d.top_sessions.map((r,i)=>`<tr>
-        <td><span style="color:${C.text3};font-size:11px">#${i+1}</span> ${r.lot}</td>
+        <td><span style="color:${C.text3};font-size:10px">#${i+1}</span>
+            <span style="margin-left:6px">${r.lot}</span></td>
         <td>${r.product}</td><td>${r.shift}</td><td>${r.machine}</td>
         <td><strong>${r.bags.toLocaleString()}</strong></td>
         <td><span class="pill ${r.rate>=95?'pill-pass':r.rate>=80?'pill-under':'pill-over'}">${r.rate}%</span></td>
       </tr>`).join('');
 }
 
-loadAll();
+// ── kick off ──────────────────────────────────────────────────────────────────
+loadAll(true);
 </script>
 {% endblock %}
