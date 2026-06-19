@@ -136,16 +136,33 @@
   </div>
 </div>
 
-<!-- ── Row 4: Weight Trend + Hourly ── -->
-<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px"
-     class="anim-in d5">
-  <div class="chart-card">
-    <div class="chart-card-title">Weight Trend — Avg / Min / Max per Session (g)</div>
-    <div style="height:200px"><canvas id="weight-trend"></canvas></div>
+<!-- ── Row 4: Trading Candlestick Chart (full width) ── -->
+<div class="chart-card anim-in d5" style="margin-bottom:12px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div class="chart-card-title" style="margin-bottom:4px">Weight Performance Chart</div>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:14px;flex-wrap:wrap">
+        <span>Wick = Min / Max weight range</span>
+        <span>Body = weight spread (Q1–Q3)</span>
+        <span><span style="color:#30D158">■</span> FPY ≥95%</span>
+        <span><span style="color:#FF9F0A">■</span> FPY 80–95%</span>
+        <span><span style="color:#FF453A">■</span> FPY &lt;80%</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <div id="candle-tooltip" style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;text-align:right"></div>
+      <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().fitContent()">Fit All</button>
+      <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().resetTimeScale()">Reset</button>
+    </div>
   </div>
+  <div id="trading-chart" style="height:320px;border-radius:var(--r-sm);overflow:hidden"></div>
+</div>
+
+<!-- ── Row 4b: Hourly Distribution (moved here) ── -->
+<div style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px" class="anim-in d5">
   <div class="chart-card">
     <div class="chart-card-title">Hourly Production Distribution</div>
-    <div style="height:200px"><canvas id="hourly-chart"></canvas></div>
+    <div style="height:160px"><canvas id="hourly-chart"></canvas></div>
   </div>
 </div>
 
@@ -182,6 +199,7 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 // ── chart registry ────────────────────────────────────────────────────────────
 const charts = {};
@@ -190,6 +208,123 @@ function mkChart(id, cfg) {
   const ctx = document.getElementById(id);
   if (!ctx || typeof Chart === 'undefined') return;
   charts[id] = new Chart(ctx, cfg);
+}
+
+// ── TradingView candlestick chart ─────────────────────────────────────────────
+let candleChart = null;
+
+function renderTradingChart(candles) {
+  const container = document.getElementById('trading-chart');
+  if (!container || typeof LightweightCharts === 'undefined') return;
+  if (candleChart) { candleChart.remove(); candleChart = null; }
+  if (!candles.length) {
+    container.innerHTML = `<div class="state-box"><span class="state-icon">◎</span>No weight data</div>`;
+    return;
+  }
+
+  candleChart = LightweightCharts.createChart(container, {
+    width:  container.clientWidth,
+    height: container.clientHeight || 320,
+    layout: {
+      background: { type: 'solid', color: 'transparent' },
+      textColor:  'rgba(235,235,245,0.55)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif',
+      fontSize: 11,
+    },
+    grid: {
+      vertLines: { color: 'rgba(84,84,88,0.18)', style: 1 },
+      horzLines: { color: 'rgba(84,84,88,0.18)', style: 1 },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color:'rgba(10,132,255,0.6)', width:1, style:0,
+                  labelBackgroundColor:'#0A84FF' },
+      horzLine: { color:'rgba(10,132,255,0.6)', width:1, style:0,
+                  labelBackgroundColor:'#0A84FF' },
+    },
+    rightPriceScale: {
+      borderColor: 'rgba(84,84,88,0.4)',
+      scaleMargins: { top: 0.08, bottom: 0.28 },
+    },
+    timeScale: {
+      borderColor: 'rgba(84,84,88,0.4)',
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    handleScroll: { mouseWheel:true, pressedMouseMove:true },
+    handleScale:  { mouseWheel:true, pinch:true },
+  });
+
+  // ── candlestick series ──────────────────────────────────────────────────────
+  const candleSeries = candleChart.addCandlestickSeries({
+    upColor:        '#30D158',
+    downColor:      '#FF453A',
+    borderUpColor:  '#30D158',
+    borderDownColor:'#FF453A',
+    wickUpColor:    '#30D158',
+    wickDownColor:  '#FF453A',
+    priceFormat: { type:'custom', formatter: v => v.toLocaleString()+' g' },
+  });
+
+  // ── volume bars (bag count) ─────────────────────────────────────────────────
+  const volSeries = candleChart.addHistogramSeries({
+    color: 'rgba(10,132,255,0.35)',
+    priceFormat: { type:'volume', precision:0 },
+    priceScaleId: 'vol',
+  });
+  candleChart.priceScale('vol').applyOptions({
+    scaleMargins: { top: 0.78, bottom: 0 },
+  });
+
+  // ── average weight line ─────────────────────────────────────────────────────
+  const avgLine = candleChart.addLineSeries({
+    color: 'rgba(90,200,250,0.6)',
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dashed,
+    priceFormat: { type:'custom', formatter: v => v.toLocaleString()+' g' },
+    title: 'Avg',
+  });
+
+  // set data (individual bar colors via per-item color field)
+  candleSeries.setData(candles.map(c => ({
+    time:  c.time, open: c.open, high: c.high, low: c.low, close: c.close,
+    color: c.color, wickColor: c.color, borderColor: c.color,
+  })));
+  volSeries.setData(candles.map(c => ({
+    time: c.time, value: c.volume,
+    color: c.color.replace('#30D158','rgba(48,209,88,0.35)')
+                  .replace('#FF9F0A','rgba(255,159,10,0.35)')
+                  .replace('#FF453A','rgba(255,69,58,0.35)'),
+  })));
+  avgLine.setData(candles.map(c => ({ time: c.time, value: c.avg })));
+
+  candleChart.timeScale().fitContent();
+
+  // ── hover tooltip ───────────────────────────────────────────────────────────
+  const tip = document.getElementById('candle-tooltip');
+  candleChart.subscribeCrosshairMove(param => {
+    if (!tip) return;
+    if (!param.point || !param.seriesData?.size) { tip.innerHTML = ''; return; }
+    const bar = param.seriesData.get(candleSeries);
+    const idx = candles.findIndex(c => c.time === (param.time ?? 0));
+    const meta = idx >= 0 ? candles[idx] : null;
+    if (bar && meta) {
+      const col = meta.rate >= 95 ? '#30D158' : meta.rate >= 80 ? '#FF9F0A' : '#FF453A';
+      tip.innerHTML =
+        `<span style="color:${col};font-weight:700">FPY ${meta.rate}%</span>` +
+        `&nbsp;·&nbsp;Lot <strong>${meta.lot}</strong>` +
+        `&nbsp;·&nbsp;Max <strong>${bar.high.toLocaleString()} g</strong>` +
+        `&nbsp;·&nbsp;Avg <strong>${meta.avg.toLocaleString()} g</strong>` +
+        `&nbsp;·&nbsp;Min <strong>${bar.low.toLocaleString()} g</strong>` +
+        `&nbsp;·&nbsp;<span style="color:rgba(235,235,245,0.5)">${meta.volume} bags</span>`;
+    }
+  });
+
+  // resize with container
+  const ro = new ResizeObserver(() => {
+    if (candleChart) candleChart.applyOptions({ width: container.clientWidth });
+  });
+  ro.observe(container);
 }
 
 // ── macOS system colour palette ───────────────────────────────────────────────
@@ -440,26 +575,8 @@ function renderAnalytics(d) {
     }
   });
 
-  // Weight trend (avg/min/max)
-  mkChart('weight-trend', {
-    type:'line',
-    data:{ labels: d.weight_trend?.map(x=>x.label) ?? [],
-           datasets:[
-             {label:'Avg', data:d.weight_trend?.map(x=>x.avg) ?? [],
-              borderColor:C.accent, tension:0.35, pointRadius:3, fill:false,
-              pointBackgroundColor:C.accent},
-             {label:'Max', data:d.weight_trend?.map(x=>x.max) ?? [],
-              borderColor:'rgba(255,69,58,.45)', tension:0.35,
-              pointRadius:0, borderDash:[4,3], fill:false},
-             {label:'Min', data:d.weight_trend?.map(x=>x.min) ?? [],
-              borderColor:'rgba(255,159,10,.45)', tension:0.35,
-              pointRadius:0, borderDash:[4,3], fill:false},
-           ] },
-    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
-      scales:baseScales,
-      plugins:{ legend:{ labels:{color:C.text2,font:{size:11},
-        boxWidth:12, boxHeight:2} } } }
-  });
+  // Trading candlestick chart (TradingView Lightweight Charts)
+  renderTradingChart(d.candles ?? []);
 
   // Hourly distribution
   mkChart('hourly-chart', {

@@ -167,19 +167,39 @@ def api_analytics():
                 hourly[h] = hourly.get(h, 0) + int(r[8] or 0)
         hourly_data = [{'hour': f"{h:02d}:00", 'bags': hourly.get(h, 0)} for h in range(24)]
 
-        # ── weight trend (avg per session) ─────────────────────────────────────
-        weight_pts = []
+        # ── candlestick OHLC per session (trading-style weight chart) ─────────────
+        # high=max_weight, low=min_weight
+        # body (open/close) = Q1/Q3 approximation of weight distribution
+        # color = FPY quality: green ≥95%, orange 80-95%, red <80%
+        candles = []
         for r in sorted(rows, key=lambda x: x[6] if x[6] else datetime.min):
-            if r[16] is not None:
-                d = r[6]
-                label = d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d)[:10]
-                weight_pts.append({
-                    'label': label,
-                    'avg': round(float(r[16]), 1),
-                    'min': int(r[14] or 0),
-                    'max': int(r[15] or 0),
-                    'lot': r[2] or '',
-                })
+            if r[16] is None or r[14] is None or r[15] is None or r[6] is None:
+                continue
+            ts   = r[6]
+            mn   = float(r[14])
+            mx   = float(r[15])
+            avg  = float(r[16])
+            span = mx - mn
+            rate = round(float(r[13] or 0), 1)
+            # body represents middle 50% of weight distribution
+            op = round(mn + span * 0.25, 1)
+            cl = round(mn + span * 0.75, 1)
+            if op == cl:                  # prevent zero-height body
+                op = round(avg - 0.5, 1)
+                cl = round(avg + 0.5, 1)
+            color = '#30D158' if rate >= 95 else '#FF9F0A' if rate >= 80 else '#FF453A'
+            candles.append({
+                'time':   int(ts.timestamp()) if hasattr(ts, 'timestamp') else 0,
+                'open':   op,
+                'high':   mx,
+                'low':    mn,
+                'close':  cl,
+                'color':  color,
+                'volume': int(r[8] or 0),
+                'rate':   rate,
+                'lot':    r[2] or '',
+                'avg':    round(avg, 1),
+            })
 
         # ── top 5 sessions by volume ───────────────────────────────────────────
         top = sorted(rows, key=lambda r: int(r[8] or 0), reverse=True)[:5]
@@ -207,7 +227,7 @@ def api_analytics():
             'machines': machines_cmp,
             'products': products,
             'hourly': hourly_data,
-            'weight_trend': weight_pts,
+            'candles': candles,
             'top_sessions': top_sessions,
             'avg_throughput': avg_throughput,
         })
