@@ -85,6 +85,136 @@ def run_report(machine, start, end, lot, batch, rtype):
         lot or None, batch or None, rtype,
     ], fetch=True) or []
 
+# ── analytics api ────────────────────────────────────────────────────────────
+@app.route('/api/analytics')
+def api_analytics():
+    machine = request.args.get('machine', '')
+    start   = request.args.get('start', datetime.now().strftime('%Y-%m-01'))
+    end     = request.args.get('end',   datetime.now().strftime('%Y-%m-%d'))
+    try:
+        rows = run_report(machine, start, end, '', '', 'monthly')
+
+        # ── FPY trend by date ──────────────────────────────────────────────────
+        fpy_map = {}
+        for r in rows:
+            d = r[6]
+            if not d: continue
+            day = d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)[:10]
+            e = fpy_map.setdefault(day, {'bags': 0, 'pass': 0})
+            e['bags'] += int(r[8] or 0)
+            e['pass'] += int(r[9] or 0)
+        fpy_trend = [{'date': d[:5] if len(d) > 5 else d,
+                      'fpy': round(v['pass'] / v['bags'] * 100, 1) if v['bags'] else 0,
+                      'bags': v['bags']}
+                     for d, v in sorted(fpy_map.items())]
+
+        # ── defect pareto ──────────────────────────────────────────────────────
+        total_under = sum(int(r[10] or 0) for r in rows)
+        total_over  = sum(int(r[11] or 0) for r in rows)
+        total_metal = sum(int(r[12] or 0) for r in rows)
+
+        # ── shift breakdown ────────────────────────────────────────────────────
+        shift_map = {}
+        for r in rows:
+            s = (r[4] or 'Unknown').strip() or 'Unknown'
+            e = shift_map.setdefault(s, {'bags': 0, 'pass': 0, 'under': 0, 'over': 0, 'metal': 0})
+            e['bags']  += int(r[8]  or 0)
+            e['pass']  += int(r[9]  or 0)
+            e['under'] += int(r[10] or 0)
+            e['over']  += int(r[11] or 0)
+            e['metal'] += int(r[12] or 0)
+        shifts = sorted([
+            {'shift': s, 'bags': v['bags'],
+             'rate': round(v['pass'] / v['bags'] * 100, 1) if v['bags'] else 0,
+             'defects': v['under'] + v['over'] + v['metal']}
+            for s, v in shift_map.items()
+        ], key=lambda x: x['bags'], reverse=True)
+
+        # ── machine comparison ─────────────────────────────────────────────────
+        mach_map = {}
+        for r in rows:
+            m = r[1] or 'Unknown'
+            e = mach_map.setdefault(m, {'bags': 0, 'pass': 0, 'under': 0, 'over': 0, 'metal': 0})
+            e['bags']  += int(r[8]  or 0)
+            e['pass']  += int(r[9]  or 0)
+            e['under'] += int(r[10] or 0)
+            e['over']  += int(r[11] or 0)
+            e['metal'] += int(r[12] or 0)
+        machines_cmp = [{'machine': m, **v,
+                          'rate': round(v['pass'] / v['bags'] * 100, 1) if v['bags'] else 0}
+                        for m, v in mach_map.items()]
+
+        # ── product breakdown ──────────────────────────────────────────────────
+        prod_map = {}
+        for r in rows:
+            p = (r[3] or 'Unknown').strip() or 'Unknown'
+            e = prod_map.setdefault(p, {'bags': 0, 'pass': 0})
+            e['bags'] += int(r[8] or 0)
+            e['pass'] += int(r[9] or 0)
+        products = sorted([
+            {'product': p,
+             'bags': v['bags'],
+             'rate': round(v['pass'] / v['bags'] * 100, 1) if v['bags'] else 0}
+            for p, v in prod_map.items()
+        ], key=lambda x: x['bags'], reverse=True)[:8]
+
+        # ── hourly production distribution ─────────────────────────────────────
+        hourly = {}
+        for r in rows:
+            d = r[6]
+            if d and hasattr(d, 'hour'):
+                h = d.hour
+                hourly[h] = hourly.get(h, 0) + int(r[8] or 0)
+        hourly_data = [{'hour': f"{h:02d}:00", 'bags': hourly.get(h, 0)} for h in range(24)]
+
+        # ── weight trend (avg per session) ─────────────────────────────────────
+        weight_pts = []
+        for r in sorted(rows, key=lambda x: x[6] if x[6] else datetime.min):
+            if r[16] is not None:
+                d = r[6]
+                label = d.strftime('%m/%d') if hasattr(d, 'strftime') else str(d)[:10]
+                weight_pts.append({
+                    'label': label,
+                    'avg': round(float(r[16]), 1),
+                    'min': int(r[14] or 0),
+                    'max': int(r[15] or 0),
+                    'lot': r[2] or '',
+                })
+
+        # ── top 5 sessions by volume ───────────────────────────────────────────
+        top = sorted(rows, key=lambda r: int(r[8] or 0), reverse=True)[:5]
+        top_sessions = [{'lot': r[2], 'product': r[3], 'shift': r[4] or '—',
+                         'machine': r[1] or '—', 'bags': int(r[8] or 0),
+                         'rate': round(float(r[13] or 0), 1)}
+                        for r in top]
+
+        # ── throughput (bags/hour per session) avg ─────────────────────────────
+        throughputs = []
+        for r in rows:
+            t1, t2 = r[6], r[7]
+            bags = int(r[8] or 0)
+            if t1 and t2 and bags > 0 and hasattr(t1, 'hour') and hasattr(t2, 'hour'):
+                hrs = (t2 - t1).total_seconds() / 3600
+                if hrs > 0.05:
+                    throughputs.append(bags / hrs)
+        avg_throughput = round(sum(throughputs) / len(throughputs), 1) if throughputs else 0
+
+        return jsonify({
+            'fpy_trend': fpy_trend,
+            'defect_pareto': {'labels': ['Under Weight', 'Over Weight', 'Metal Fail'],
+                              'data': [total_under, total_over, total_metal]},
+            'shifts': shifts,
+            'machines': machines_cmp,
+            'products': products,
+            'hourly': hourly_data,
+            'weight_trend': weight_pts,
+            'top_sessions': top_sessions,
+            'avg_throughput': avg_throughput,
+        })
+    except Exception as e:
+        log.error(f"Analytics API: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # ── pages ────────────────────────────────────────────────────────────────────
 @app.route('/')
 def dashboard():
