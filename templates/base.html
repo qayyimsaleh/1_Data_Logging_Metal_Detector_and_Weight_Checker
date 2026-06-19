@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} — Analytics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span>{{ title }}</span>
+    </div>
+    <div class="nav-links">
+      <a href="/"        class="nav-link {% if active=='dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="/reports" class="nav-link {% if active=='reports'   %}active{% endif %}">Reports</a>
+      <span class="nav-ver">v{{ version }}</span>
+      <button class="btn btn-danger btn-sm" onclick="confirmShutdown()">Stop Server</button>
+    </div>
+  </div>
+</nav>
+
+<main class="main-content">
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+async function confirmShutdown() {
+  if (!confirm('Stop the report server?')) return;
+  try { await fetch('/shutdown', {method:'POST'}); } catch(e) {}
+  document.body.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1e1e2e">
+      <div style="text-align:center;color:#e2e2e9">
+        <div style="font-size:48px;margin-bottom:16px">■</div>
+        <h2 style="color:#7c5cfc;margin-bottom:8px">Server Stopped</h2>
+        <p style="color:#a0a0b8">You can close this tab.</p>
+      </div>
+    </div>`;
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <h1 class="page-title" style="margin-bottom:0">Dashboard</h1>
+  <div class="filter-bar" style="margin-bottom:0">
+    <div class="filter-group">
+      <label class="filter-label">Machine</label>
+      <select id="f-machine" class="filter-select" style="min-width:160px">
+        <option value="">All Machines</option>
+        {% for m in machines %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">From</label>
+      <input id="f-start" type="date" class="filter-input" style="min-width:130px">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">To</label>
+      <input id="f-end" type="date" class="filter-input" style="min-width:130px">
+    </div>
+    <button class="btn btn-accent" onclick="loadDashboard()">Refresh</button>
+  </div>
+</div>
+
+<!-- KPI cards -->
+<div class="kpi-grid" id="kpi-grid">
+  <div class="kpi-card"><div class="kpi-label">Sessions</div><div class="kpi-value kpi-accent" id="kpi-sessions">—</div></div>
+  <div class="kpi-card"><div class="kpi-label">Total Bags</div><div class="kpi-value kpi-blue" id="kpi-bags">—</div></div>
+  <div class="kpi-card"><div class="kpi-label">Pass Rate</div><div class="kpi-value kpi-green" id="kpi-rate">—</div></div>
+  <div class="kpi-card"><div class="kpi-label">Under Weight</div><div class="kpi-value kpi-orange" id="kpi-under">—</div></div>
+  <div class="kpi-card"><div class="kpi-label">Over Weight</div><div class="kpi-value kpi-red" id="kpi-over">—</div></div>
+  <div class="kpi-card"><div class="kpi-label">Metal Failures</div><div class="kpi-value kpi-red" id="kpi-metal">—</div></div>
+</div>
+
+<!-- Charts -->
+<div class="chart-row">
+  <div class="chart-card">
+    <div class="chart-card-title">Pass / Fail Breakdown</div>
+    <div class="chart-wrap" style="height:220px;display:flex;align-items:center;justify-content:center">
+      <canvas id="donut-chart"></canvas>
+      <div id="donut-na" class="state-box" style="display:none"><span class="state-icon">◎</span>No data</div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-title">Daily Production (bags)</div>
+    <div class="chart-wrap" style="height:220px">
+      <canvas id="bar-chart"></canvas>
+      <div id="bar-na" class="state-box" style="display:none"><span class="state-icon">◎</span>No data</div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent sessions table -->
+<div class="section-title">Recent Sessions</div>
+<div class="table-wrap">
+  <div class="table-scroll">
+    <table id="recent-table">
+      <thead>
+        <tr>
+          <th>Prod ID</th><th>Machine</th><th>Lot No</th><th>Product</th>
+          <th>Shift</th><th>Total</th><th>Pass</th><th>Under</th>
+          <th>Over</th><th>Metal</th><th>Pass Rate</th><th>First Reading</th><th>Last Reading</th>
+        </tr>
+      </thead>
+      <tbody id="recent-body">
+        <tr><td colspan="13" class="state-box" style="display:table-cell;text-align:center;padding:40px">
+          <span class="spinner"></span>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+        onerror="window.chartjsFailed=true"></script>
+<script>
+let donutChart = null, barChart = null;
+
+function today() { return new Date().toISOString().slice(0,10); }
+function monthStart() {
+  const d = new Date(); d.setDate(1);
+  return d.toISOString().slice(0,10);
+}
+
+document.getElementById('f-start').value = monthStart();
+document.getElementById('f-end').value   = today();
+
+async function loadDashboard() {
+  const machine = document.getElementById('f-machine').value;
+  const start   = document.getElementById('f-start').value;
+  const end     = document.getElementById('f-end').value;
+  const params  = new URLSearchParams({machine, start, end});
+
+  document.getElementById('recent-body').innerHTML =
+    `<tr><td colspan="13" style="text-align:center;padding:40px">
+       <span class="spinner"></span></td></tr>`;
+
+  const resp = await fetch('/api/dashboard?' + params);
+  if (!resp.ok) { alert('Error loading dashboard.'); return; }
+  const d = await resp.json();
+  if (d.error) { alert('Error: ' + d.error); return; }
+
+  // KPIs
+  document.getElementById('kpi-sessions').textContent = d.kpis.sessions.toLocaleString();
+  document.getElementById('kpi-bags').textContent     = d.kpis.bags.toLocaleString();
+  document.getElementById('kpi-rate').textContent     = d.kpis.pass_rate + '%';
+  document.getElementById('kpi-under').textContent    = d.kpis.under.toLocaleString();
+  document.getElementById('kpi-over').textContent     = d.kpis.over.toLocaleString();
+  document.getElementById('kpi-metal').textContent    = d.kpis.metal.toLocaleString();
+
+  // Charts
+  if (typeof Chart !== 'undefined') {
+    const chartDefaults = {
+      plugins: { legend: { labels: { color: '#a0a0b8', font: { size: 12 } } } },
+    };
+
+    // Donut
+    if (donutChart) donutChart.destroy();
+    const hasDonut = d.donut.data.some(v => v > 0);
+    document.getElementById('donut-na').style.display  = hasDonut ? 'none' : 'flex';
+    document.getElementById('donut-chart').style.display = hasDonut ? 'block' : 'none';
+    if (hasDonut) {
+      donutChart = new Chart(document.getElementById('donut-chart'), {
+        type: 'doughnut',
+        data: {
+          labels: d.donut.labels,
+          datasets: [{ data: d.donut.data, backgroundColor: ['#3dd68c','#ffb347','#ff6b6b'],
+                       borderWidth: 0, hoverOffset: 4 }]
+        },
+        options: {
+          ...chartDefaults,
+          cutout: '68%',
+          plugins: { ...chartDefaults.plugins,
+            legend: { position: 'bottom', labels: { color: '#a0a0b8', padding: 12, font:{size:11} } }
+          }
+        }
+      });
+    }
+
+    // Bar
+    if (barChart) barChart.destroy();
+    const hasBar = d.daily.data.length > 0;
+    document.getElementById('bar-na').style.display  = hasBar ? 'none' : 'flex';
+    document.getElementById('bar-chart').style.display = hasBar ? 'block' : 'none';
+    if (hasBar) {
+      barChart = new Chart(document.getElementById('bar-chart'), {
+        type: 'bar',
+        data: {
+          labels: d.daily.labels,
+          datasets: [{
+            label: 'Bags', data: d.daily.data,
+            backgroundColor: 'rgba(124,92,252,0.7)',
+            borderColor: '#7c5cfc', borderWidth: 1, borderRadius: 4,
+          }]
+        },
+        options: {
+          ...chartDefaults,
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#6e6e87', font:{size:10} }, grid: { color: '#3d3d5c' } },
+            y: { ticks: { color: '#6e6e87', font:{size:10} }, grid: { color: '#3d3d5c' },
+                 beginAtZero: true }
+          },
+          plugins: { ...chartDefaults.plugins, legend: { display: false } }
+        }
+      });
+    }
+  }
+
+  // Recent sessions
+  const tbody = document.getElementById('recent-body');
+  if (!d.recent.length) {
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:40px;color:#6e6e87">No data for selected period</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = d.recent.map(r => `
+    <tr>
+      <td><strong style="color:#7c5cfc">#${r.prod_id}</strong></td>
+      <td>${r.machine}</td>
+      <td>${r.lot}</td>
+      <td>${r.product}</td>
+      <td>${r.shift}</td>
+      <td><strong>${r.total}</strong></td>
+      <td style="color:#3dd68c">${r.pass}</td>
+      <td style="color:#ffb347">${r.under}</td>
+      <td style="color:#ff6b6b">${r.over}</td>
+      <td style="color:#ff6b6b">${r.metal}</td>
+      <td><span class="pill ${r.rate>=95?'pill-pass':r.rate>=80?'pill-under':'pill-over'}">${r.rate}%</span></td>
+      <td style="color:#6e6e87">${r.first}</td>
+      <td style="color:#6e6e87">${r.last}</td>
+    </tr>`).join('');
+}
+
+loadDashboard();
+</script>
+{% endblock %}

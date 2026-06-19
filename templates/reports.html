@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">Reports &amp; Analytics</h1>
+
+<div class="reports-layout">
+  <!-- Filter Panel -->
+  <aside class="filter-panel">
+    <div class="fp-title">Filters</div>
+
+    <label class="fp-label">Machine</label>
+    <select id="f-machine" class="filter-select" style="width:100%;margin-bottom:12px">
+      <option value="">All Machines</option>
+      {% for m in machines %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+    </select>
+
+    <label class="fp-label">Date From</label>
+    <input id="f-start" type="date" class="filter-input" value="{{ month_start }}"
+           style="width:100%;margin-bottom:12px">
+
+    <label class="fp-label">Date To</label>
+    <input id="f-end" type="date" class="filter-input" value="{{ today }}"
+           style="width:100%;margin-bottom:12px">
+
+    <label class="fp-label">Lot Number</label>
+    <input id="f-lot" type="text" class="filter-input" placeholder="Search..."
+           style="width:100%;margin-bottom:12px">
+
+    <label class="fp-label">Batch No</label>
+    <input id="f-batch" type="text" class="filter-input" placeholder="Search..."
+           style="width:100%;margin-bottom:14px">
+
+    <label class="fp-label">Report Type</label>
+    <div class="radio-group">
+      <label class="radio-label">
+        <input type="radio" name="rtype" value="detailed" checked> Detailed (per reading)
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="rtype" value="monthly"> Summary (per session)
+      </label>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-green" onclick="generate()">Generate Report</button>
+      <a id="btn-excel" class="btn btn-accent" href="#" onclick="return exportFile('excel')">Export Excel</a>
+      <a id="btn-pdf"   class="btn btn-orange" href="#" onclick="return exportFile('pdf')">Export PDF</a>
+      <button class="btn btn-ghost" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <div id="gen-status" style="margin-top:12px;font-size:12px;color:#6e6e87;text-align:center"></div>
+  </aside>
+
+  <!-- Results -->
+  <div class="results-area">
+    <div class="results-header">
+      <div class="results-info" id="results-info">
+        Generate a report to view data.
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:12px;color:#6e6e87">Rows per page:</span>
+        <select id="page-size" class="filter-select" style="min-width:70px;padding:4px 8px;font-size:12px"
+                onchange="renderPage(1)">
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table id="report-table">
+          <thead id="report-head"></thead>
+          <tbody id="report-body">
+            <tr><td style="text-align:center;padding:60px;color:#6e6e87">
+              Select filters and click <strong>Generate Report</strong>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination" style="display:none">
+        <span class="page-info" id="page-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="renderPage(currentPage-1)">‹ Prev</button>
+        <span id="page-btns" style="display:flex;gap:4px"></span>
+        <button class="btn btn-ghost btn-sm" onclick="renderPage(currentPage+1)">Next ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRows    = [];
+let reportType = 'detailed';
+let sortCol    = -1;
+let sortAsc    = true;
+let currentPage = 1;
+
+const DETAILED_COLS = [
+  "Log ID","Production ID","Timestamp","Weight (g)","Status","Metal Status",
+  "Lot No","Product","Shift","Batch No","Net Weight","Under Limit","Over Limit","Machine"
+];
+const SUMMARY_COLS = [
+  "Production ID","Machine","Lot No","Product","Shift","Batch No",
+  "First Reading","Last Reading","Total Readings","Pass Count",
+  "Under Fail","Over Fail","Metal Fail","Pass Rate %","Min Weight","Max Weight","Avg Weight"
+];
+
+function getParams() {
+  return new URLSearchParams({
+    machine: document.getElementById('f-machine').value,
+    start:   document.getElementById('f-start').value,
+    end:     document.getElementById('f-end').value,
+    lot:     document.getElementById('f-lot').value,
+    batch:   document.getElementById('f-batch').value,
+    type:    document.querySelector('input[name="rtype"]:checked').value,
+  });
+}
+
+async function generate() {
+  const status = document.getElementById('gen-status');
+  const info   = document.getElementById('results-info');
+  status.innerHTML = '<span class="spinner"></span>';
+  document.getElementById('report-body').innerHTML =
+    `<tr><td colspan="20" style="text-align:center;padding:60px"><span class="spinner"></span></td></tr>`;
+  document.getElementById('pagination').style.display = 'none';
+  document.getElementById('report-head').innerHTML = '';
+
+  const resp = await fetch('/api/report?' + getParams());
+  status.textContent = '';
+  if (!resp.ok) { info.innerHTML = '<span style="color:#ff6b6b">Error loading report.</span>'; return; }
+  const d = await resp.json();
+  if (d.error) { info.innerHTML = `<span style="color:#ff6b6b">Error: ${d.error}</span>`; return; }
+
+  allRows    = d.rows;
+  reportType = d.type;
+  sortCol    = -1; sortAsc = true;
+  buildHeaders();
+  renderPage(1);
+  info.innerHTML = `<strong>${d.count.toLocaleString()}</strong> records &nbsp;|&nbsp;
+    ${d.type === 'detailed' ? 'Detailed' : 'Summary'} &nbsp;|&nbsp;
+    Machine: <strong>${document.getElementById('f-machine').value || 'All'}</strong>`;
+}
+
+function buildHeaders() {
+  const cols = reportType === 'detailed' ? DETAILED_COLS : SUMMARY_COLS;
+  document.getElementById('report-head').innerHTML =
+    '<tr>' + cols.map((c, i) =>
+      `<th onclick="sortBy(${i})" id="th-${i}">${c}</th>`
+    ).join('') + '</tr>';
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = true; }
+  // update header arrows
+  document.querySelectorAll('th').forEach((th, i) => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (i === col) th.classList.add(sortAsc ? 'sort-asc' : 'sort-desc');
+  });
+  allRows.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    const na = parseFloat(String(va).replace(',',''));
+    const nb = parseFloat(String(vb).replace(',',''));
+    if (!isNaN(na) && !isNaN(nb)) { va = na; vb = nb; }
+    else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+    return sortAsc ? (va > vb ? 1 : va < vb ? -1 : 0)
+                   : (va < vb ? 1 : va > vb ? -1 : 0);
+  });
+  renderPage(1);
+}
+
+function renderPage(page) {
+  const ps    = parseInt(document.getElementById('page-size').value);
+  const total = allRows.length;
+  const pages = Math.max(1, Math.ceil(total / ps));
+  page = Math.max(1, Math.min(page, pages));
+  currentPage = page;
+
+  const start = (page - 1) * ps;
+  const chunk = allRows.slice(start, start + ps);
+
+  const tbody = document.getElementById('report-body');
+  if (!chunk.length) {
+    tbody.innerHTML = `<tr><td colspan="20" style="text-align:center;padding:40px;color:#6e6e87">No records found.</td></tr>`;
+    document.getElementById('pagination').style.display = 'none';
+    return;
+  }
+
+  tbody.innerHTML = chunk.map(row => '<tr>' + row.map((v, i) => {
+    return `<td>${fmtCell(v, i)}</td>`;
+  }).join('') + '</tr>').join('');
+
+  // pagination
+  const pag = document.getElementById('pagination');
+  pag.style.display = total > ps ? 'flex' : 'none';
+  document.getElementById('page-info').textContent =
+    `${start+1}–${Math.min(start+ps, total)} of ${total.toLocaleString()}`;
+
+  // page buttons (show max 7 around current)
+  const btns = document.getElementById('page-btns');
+  let nums = new Set([1, pages]);
+  for (let p = Math.max(1, page-2); p <= Math.min(pages, page+2); p++) nums.add(p);
+  let sorted = [...nums].sort((a,b)=>a-b), last = 0;
+  btns.innerHTML = sorted.map(p => {
+    let html = '';
+    if (last && p - last > 1) html += `<span style="color:#6e6e87;padding:0 4px">…</span>`;
+    html += `<button class="btn btn-ghost btn-sm${p===page?' btn-accent':''}"
+              onclick="renderPage(${p})">${p}</button>`;
+    last = p; return html;
+  }).join('');
+}
+
+function fmtCell(v, col) {
+  if (v === '' || v === null) return '<span style="color:#6e6e87">—</span>';
+  if (reportType === 'detailed') {
+    if (col === 4) {
+      const map = {Pass:'pill-pass', Under:'pill-under', Over:'pill-over',
+                   '1':'pill-pass', '0':'pill-under', '2':'pill-over'};
+      const label = {1:'Pass',0:'Under',2:'Over'}[v] ?? v;
+      return `<span class="pill ${map[String(v)]??''}">${label}</span>`;
+    }
+    if (col === 5) {
+      if (v === '' || v === null) return '<span class="pill pill-na">N/A</span>';
+      const isF = v == 1 || v === 'Fail';
+      return `<span class="pill ${isF?'pill-fail':'pill-ok'}">${isF?'Fail':'Pass'}</span>`;
+    }
+    if (col === 3) return `<strong>${Number(v).toLocaleString()}</strong>`;
+  } else {
+    if (col === 13) {
+      const rate = parseFloat(v);
+      return `<span class="pill ${rate>=95?'pill-pass':rate>=80?'pill-under':'pill-over'}">${rate.toFixed(1)}%</span>`;
+    }
+    if (col === 8) return `<strong>${Number(v).toLocaleString()}</strong>`;
+  }
+  return v;
+}
+
+function exportFile(fmt) {
+  const params = getParams();
+  window.location.href = `/export/${fmt}?` + params;
+  return false;
+}
+
+function clearFilters() {
+  document.getElementById('f-machine').value = '';
+  document.getElementById('f-start').value   = '{{ month_start }}';
+  document.getElementById('f-end').value     = '{{ today }}';
+  document.getElementById('f-lot').value     = '';
+  document.getElementById('f-batch').value   = '';
+  document.querySelector('input[value="detailed"]').checked = true;
+}
+</script>
+{% endblock %}
