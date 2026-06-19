@@ -64,3 +64,15 @@ BEGIN
     DELETE FROM machine_location WHERE machine = @Machine;
 END
 GO
+
+-- 6. Fix: only resume an open session — ended sessions always produce a new row
+ALTER PROCEDURE [dbo].[sp_GetProductionIdByLot]
+    @LotNo   NVARCHAR(50),
+    @Machine NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT production_id FROM production_session
+    WHERE lot_no = @LotNo AND machine = @Machine AND end_date IS NULL;
+END
+GO
