@@ -205,10 +205,10 @@ function mkChart(id, cfg) {
 const C = {
   accent:'#0A84FF', green:'#30D158', red:'#FF453A', orange:'#FF9F0A',
   blue:'#5AC8FA', purple:'#BF5AF2',
-  text2:'rgba(235,235,245,0.60)', text3:'rgba(235,235,245,0.30)',
-  border:'rgba(84,84,88,0.65)', sep:'rgba(84,84,88,0.20)',
+  text2:'rgba(226,226,240,0.65)', text3:'rgba(226,226,240,0.35)',
+  sep:'#1e1e36', sep2:'#252540',
 };
-const gridOpts  = { color: C.sep };
+const gridOpts  = { color: '#1c1c2e' };
 const tickOpts  = { color: C.text3, font:{size:10} };
 const baseScales = {
   x:{ ticks:tickOpts, grid:gridOpts },
@@ -479,11 +479,11 @@ function renderTradingChart(candles) {
   candleChart = LightweightCharts.createChart(container, {
     width: container.clientWidth, height: container.clientHeight || 260,
     layout: { background:{type:'solid',color:'transparent'},
-              textColor:'rgba(235,235,245,0.5)',
-              fontFamily:'-apple-system,BlinkMacSystemFont,SF Pro Display,sans-serif',
-              fontSize:11 },
-    grid: { vertLines:{color:'rgba(84,84,88,0.15)',style:1},
-            horzLines:{color:'rgba(84,84,88,0.15)',style:1} },
+              textColor:'rgba(226,226,240,0.4)',
+              fontFamily:"'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace",
+              fontSize:10 },
+    grid: { vertLines:{color:'#161622',style:1},
+            horzLines:{color:'#161622',style:1} },
     crosshair: { mode:LightweightCharts.CrosshairMode.Normal,
       vertLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'},
       horzLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'} },
