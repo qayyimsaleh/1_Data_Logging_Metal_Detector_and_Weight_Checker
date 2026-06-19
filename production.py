@@ -65,6 +65,15 @@ class ProductionApp:
             messagebox.showerror("DB Error", f"Cannot connect to database.\n\n{getattr(self.db, 'last_error', '')}")
         self.pc_ip = get_local_ip()
         self.machine_name = self.pc_ip
+        self.app_session_id = None
+        try:
+            r = self.db.call_sp("sp_AppStarted",
+                                [self.pc_ip, socket.gethostname(), APP_VERSION],
+                                fetch=True)
+            self.app_session_id = r[0][0] if r else None
+            self.log.info(f"App uptime tracking started (session_id={self.app_session_id})")
+        except Exception as e:
+            self.log.warning(f"App uptime tracking unavailable: {e}")
         self.weigher_ip = "192.168.0.100"
         self.weigher_port = 50001
         self.metal_ip = None
@@ -1151,6 +1160,11 @@ class ProductionApp:
             try:
                 self.db.call_sp("sp_EndProductionSession",
                                 [self.prod_id, datetime.now(), sanitize(self.user, 10)])
+            except Exception: pass
+        if self.app_session_id:
+            try:
+                self.db.call_sp("sp_AppStopped", [self.app_session_id])
+                self.log.info(f"App uptime stamped (session_id={self.app_session_id})")
             except Exception: pass
         self.db.close(); self.root.destroy()
 
