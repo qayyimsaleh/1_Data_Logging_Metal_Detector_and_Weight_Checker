@@ -140,11 +140,13 @@ function mkChart(id, cfg) {
   charts[id] = new Chart(ctx, cfg);
 }
 
-// ── colour palette ───────────────────────────────────────────────────────────
+// ── colour palette (macOS system colours) ────────────────────────────────────
 const C = {
-  accent:'#7c5cfc', green:'#3dd68c', red:'#ff6b6b', orange:'#ffb347',
-  blue:'#4ea8de', text2:'#a0a0b8', text3:'#6e6e87', border:'#3d3d5c',
-  bg_mid:'#252536',
+  accent:'#0A84FF', green:'#30D158', red:'#FF453A', orange:'#FF9F0A',
+  blue:'#5AC8FA',   purple:'#BF5AF2',
+  text2:'rgba(235,235,245,0.60)', text3:'rgba(235,235,245,0.30)',
+  border:'rgba(84,84,88,0.65)', sep:'rgba(84,84,88,0.30)',
+  bg_mid:'#1c1c1e',
 };
 const gridOpts = { color: C.border };
 const tickOpts = { color: C.text3, font:{size:10} };
@@ -194,7 +196,7 @@ function renderMain(d) {
   mkChart('donut-chart', {
     type: 'doughnut',
     data: { labels: d.donut.labels,
-            datasets:[{data:d.donut.data, backgroundColor:[C.green,C.orange,C.red],
+            datasets:[{data:d.donut.data, backgroundColor:['rgba(48,209,88,0.85)','rgba(255,159,10,0.85)','rgba(255,69,58,0.85)'],
                        borderWidth:0, hoverOffset:4}] },
     options: { cutout:'68%',
       plugins:{ legend:{ position:'bottom', labels:{color:C.text2,padding:10,font:{size:11}} } } }
@@ -205,7 +207,7 @@ function renderMain(d) {
     type:'bar',
     data:{ labels:d.daily.labels,
            datasets:[{label:'Bags',data:d.daily.data,
-                      backgroundColor:'rgba(124,92,252,0.7)',borderColor:C.accent,
+                      backgroundColor:'rgba(10,132,255,0.65)',borderColor:C.accent,
                       borderWidth:1,borderRadius:3}] },
     options:{ responsive:true, maintainAspectRatio:false,
               scales:baseScales, plugins:noLegend }
@@ -237,7 +239,7 @@ function renderAnalytics(d) {
     data:{ labels: d.fpy_trend.map(x=>x.date),
            datasets:[{
              label:'FPY %', data: d.fpy_trend.map(x=>x.fpy),
-             borderColor:C.green, backgroundColor:'rgba(61,214,140,0.1)',
+             borderColor:C.green, backgroundColor:'rgba(48,209,88,0.08)',
              fill:true, tension:0.4, pointRadius:3, pointBackgroundColor:C.green,
            }] },
     options:{ responsive:true, maintainAspectRatio:false,
@@ -253,7 +255,7 @@ function renderAnalytics(d) {
     type:'bar',
     data:{ labels: d.defect_pareto.labels,
            datasets:[{data:d.defect_pareto.data,
-                      backgroundColor:[C.orange, C.red, '#ff3399'],
+                      backgroundColor:['rgba(255,159,10,0.85)','rgba(255,69,58,0.85)','rgba(255,55,153,0.85)'],
                       borderRadius:4, borderWidth:0}] },
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
               scales:{ x:{ticks:tickOpts,grid:gridOpts,beginAtZero:true},
@@ -266,7 +268,7 @@ function renderAnalytics(d) {
     type:'bar',
     data:{ labels: d.shifts.map(x=>x.shift),
            datasets:[{label:'FPY %', data:d.shifts.map(x=>x.rate),
-                      backgroundColor:'rgba(78,168,222,0.8)', borderRadius:4, borderWidth:0}] },
+                      backgroundColor:'rgba(90,200,250,0.8)', borderRadius:4, borderWidth:0}] },
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:tickOpts,grid:gridOpts,min:0,max:100},
                y:{ticks:{color:C.text2,font:{size:11}},grid:{display:false}} },
@@ -282,7 +284,7 @@ function renderAnalytics(d) {
     type:'bar',
     data:{ labels: d.machines.map(x=>x.machine),
            datasets:[{label:'FPY %', data:d.machines.map(x=>x.rate),
-                      backgroundColor:'rgba(124,92,252,0.8)', borderRadius:4, borderWidth:0}] },
+                      backgroundColor:'rgba(191,90,242,0.8)', borderRadius:4, borderWidth:0}] },
     options:{ responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text2,font:{size:10}},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,min:0,max:100} },
@@ -298,7 +300,7 @@ function renderAnalytics(d) {
     type:'bar',
     data:{ labels: d.products.map(x=>x.product.length>12 ? x.product.slice(0,12)+'…' : x.product),
            datasets:[{data:d.products.map(x=>x.bags),
-                      backgroundColor:'rgba(61,214,140,0.7)', borderRadius:3, borderWidth:0}] },
+                      backgroundColor:'rgba(48,209,88,0.75)', borderRadius:3, borderWidth:0}] },
     options:{ responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text2,font:{size:9},maxRotation:30},grid:{display:false}},
                y:{ticks:tickOpts,grid:gridOpts,beginAtZero:true} },
@@ -333,7 +335,7 @@ function renderAnalytics(d) {
     data:{ labels: d.hourly.map(x=>x.hour),
            datasets:[{data:d.hourly.map(x=>x.bags),
                       backgroundColor: d.hourly.map(x=>
-                        x.bags > 0 ? 'rgba(78,168,222,0.75)' : 'rgba(61,61,92,0.3)'),
+                        x.bags > 0 ? 'rgba(90,200,250,0.75)' : 'rgba(84,84,88,0.15)'),
                       borderRadius:3, borderWidth:0}] },
     options:{ responsive:true, maintainAspectRatio:false,
       scales:{ x:{ticks:{color:C.text3,font:{size:8}},grid:{display:false}},

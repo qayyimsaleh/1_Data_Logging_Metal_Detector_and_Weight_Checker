@@ -9,16 +9,26 @@
 <body>
 <nav class="topnav">
   <div class="topnav-inner">
-    <div class="brand">
-      <span class="brand-dot"></span>
-      <span>{{ title }}</span>
+
+    <!-- traffic lights -->
+    <div class="tl-group">
+      <span class="tl tl-red"    title="Stop Server" onclick="confirmShutdown()"></span>
+      <span class="tl tl-yellow" title="Minimize"></span>
+      <span class="tl tl-green"  title="Full Screen"></span>
     </div>
-    <div class="nav-links">
+
+    <!-- brand -->
+    <div class="brand">
+      <div>{{ title }}</div>
+      <div class="brand-sub">Production Analytics · v{{ version }}</div>
+    </div>
+
+    <!-- segment control -->
+    <div class="nav-segment">
       <a href="/"        class="nav-link {% if active=='dashboard' %}active{% endif %}">Dashboard</a>
       <a href="/reports" class="nav-link {% if active=='reports'   %}active{% endif %}">Reports</a>
-      <span class="nav-ver">v{{ version }}</span>
-      <button class="btn btn-danger btn-sm" onclick="confirmShutdown()">Stop Server</button>
     </div>
+
   </div>
 </nav>
 
@@ -28,15 +38,19 @@
 
 <script>
 async function confirmShutdown() {
-  if (!confirm('Stop the report server?')) return;
+  if (!confirm('Stop the analytics server?')) return;
   try { await fetch('/shutdown', {method:'POST'}); } catch(e) {}
+  document.body.style.background = '#000';
   document.body.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1e1e2e">
-      <div style="text-align:center;color:#e2e2e9">
-        <div style="font-size:48px;margin-bottom:16px">■</div>
-        <h2 style="color:#7c5cfc;margin-bottom:8px">Server Stopped</h2>
-        <p style="color:#a0a0b8">You can close this tab.</p>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:center;
+                height:100vh;flex-direction:column;gap:16px">
+      <div style="width:56px;height:56px;background:#FF5F57;border-radius:50%;
+                  display:flex;align-items:center;justify-content:center;
+                  font-size:24px;box-shadow:0 0 30px rgba(255,95,87,.4)">■</div>
+      <h2 style="color:#fff;font-family:-apple-system,sans-serif;font-weight:700;
+                 letter-spacing:-.02em">Server Stopped</h2>
+      <p style="color:rgba(235,235,245,0.4);font-family:-apple-system,sans-serif;
+                font-size:14px">You can close this tab.</p>
     </div>`;
 }
 </script>
