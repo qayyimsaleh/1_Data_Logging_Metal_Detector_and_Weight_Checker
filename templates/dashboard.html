@@ -180,9 +180,24 @@
 // ── chart registry ────────────────────────────────────────────────────────────
 const charts = {};
 function mkChart(id, cfg) {
-  if (charts[id]) charts[id].destroy();
   const ctx = document.getElementById(id);
   if (!ctx || typeof Chart === 'undefined') return;
+
+  if (charts[id]) {
+    // In-place update — no destroy/recreate, no flash
+    const ch = charts[id];
+    ch.data.labels = cfg.data.labels;
+    cfg.data.datasets.forEach((ds, i) => {
+      if (!ch.data.datasets[i]) return;
+      ch.data.datasets[i].data = ds.data;
+      // Sync dynamic per-bar colours (e.g. hourly active/inactive)
+      if (Array.isArray(ds.backgroundColor))
+        ch.data.datasets[i].backgroundColor = ds.backgroundColor;
+    });
+    ch.update();   // smooth transition, no rebuild
+    return;
+  }
+
   charts[id] = new Chart(ctx, cfg);
 }
 
@@ -428,15 +443,39 @@ function renderAnalytics(d) {
 }
 
 // ── TradingView candlestick ───────────────────────────────────────────────────
-let candleChart = null;
+let candleChart = null, _cSeries = null, _vSeries = null, _avgSeries = null;
+
+function _candleData(c) {
+  return { time:c.time, open:c.open, high:c.high, low:c.low, close:c.close,
+           color:c.color, wickColor:c.color, borderColor:c.color };
+}
+function _volData(c) {
+  return { time:c.time, value:c.volume,
+    color:c.color==='#30D158'?'rgba(48,209,88,0.3)'
+         :c.color==='#FF9F0A'?'rgba(255,159,10,0.3)':'rgba(255,69,58,0.3)' };
+}
+
 function renderTradingChart(candles) {
   const container = document.getElementById('trading-chart');
   if (!container || typeof LightweightCharts === 'undefined') return;
-  if (candleChart) { candleChart.remove(); candleChart = null; }
+
   if (!candles.length) {
+    if (candleChart) { candleChart.remove(); candleChart=null; _cSeries=null; _vSeries=null; _avgSeries=null; }
     container.innerHTML = `<div class="state-box" style="height:260px"><span class="state-icon">◎</span>No weight data</div>`;
     return;
   }
+
+  // ── In-place data update (no rebuild, no flicker) ─────────────────────────
+  if (candleChart && _cSeries && _vSeries && _avgSeries) {
+    _cSeries.setData(candles.map(_candleData));
+    _vSeries.setData(candles.map(_volData));
+    _avgSeries.setData(candles.map(c=>({time:c.time, value:c.avg})));
+    candleChart.timeScale().fitContent();
+    return;
+  }
+
+  // ── First-time initialization ─────────────────────────────────────────────
+  if (candleChart) { candleChart.remove(); candleChart = null; }
   candleChart = LightweightCharts.createChart(container, {
     width: container.clientWidth, height: container.clientHeight || 260,
     layout: { background:{type:'solid',color:'transparent'},
@@ -454,40 +493,34 @@ function renderTradingChart(candles) {
     handleScroll:true, handleScale:true,
   });
 
-  const candleSeries = candleChart.addCandlestickSeries({
+  // store refs so future refreshes can update without rebuild
+  _cSeries = candleChart.addCandlestickSeries({
     upColor:'#30D158', downColor:'#FF453A',
     borderUpColor:'#30D158', borderDownColor:'#FF453A',
     wickUpColor:'#30D158', wickDownColor:'#FF453A',
     priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
   });
-  const volSeries = candleChart.addHistogramSeries({
+  _vSeries = candleChart.addHistogramSeries({
     color:'rgba(10,132,255,0.3)', priceFormat:{type:'volume',precision:0},
     priceScaleId:'vol',
   });
   candleChart.priceScale('vol').applyOptions({ scaleMargins:{top:0.78,bottom:0} });
-  const avgLine = candleChart.addLineSeries({
+  _avgSeries = candleChart.addLineSeries({
     color:'rgba(90,200,250,0.5)', lineWidth:1,
     lineStyle:LightweightCharts.LineStyle.Dashed,
     priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
   });
 
-  candleSeries.setData(candles.map(c=>({
-    time:c.time, open:c.open, high:c.high, low:c.low, close:c.close,
-    color:c.color, wickColor:c.color, borderColor:c.color,
-  })));
-  volSeries.setData(candles.map(c=>({
-    time:c.time, value:c.volume,
-    color:c.color==='#30D158'?'rgba(48,209,88,0.3)'
-         :c.color==='#FF9F0A'?'rgba(255,159,10,0.3)':'rgba(255,69,58,0.3)',
-  })));
-  avgLine.setData(candles.map(c=>({time:c.time, value:c.avg})));
+  _cSeries.setData(candles.map(_candleData));
+  _vSeries.setData(candles.map(_volData));
+  _avgSeries.setData(candles.map(c=>({time:c.time, value:c.avg})));
   candleChart.timeScale().fitContent();
 
   const tip = document.getElementById('candle-tooltip');
   candleChart.subscribeCrosshairMove(param => {
     if (!tip) return;
     if (!param.point || !param.seriesData?.size) { tip.innerHTML=''; return; }
-    const bar = param.seriesData.get(candleSeries);
+    const bar = param.seriesData.get(_cSeries);
     const meta = candles.find(c=>c.time===(param.time??0));
     if (bar && meta) {
       const col = meta.rate>=95?'#30D158':meta.rate>=80?'#FF9F0A':'#FF453A';
