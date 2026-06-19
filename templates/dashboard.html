@@ -27,7 +27,7 @@
       <label class="filter-label">To</label>
       <input id="f-end" type="date" class="filter-input">
     </div>
-    <button class="btn btn-accent" onclick="loadAll(true)">Refresh</button>
+    <button class="btn btn-accent" onclick="loadAll()">Refresh</button>
   </div>
 </div>
 
@@ -229,33 +229,40 @@ function animNum(el, target, suffix='', duration=950) {
   requestAnimationFrame(tick);
 }
 
-// ── auto-refresh (60s countdown) ─────────────────────────────────────────────
-const REFRESH = 60;
-let _timer, _rem = REFRESH;
-function startRefresh() {
-  clearInterval(_timer);
-  _rem = REFRESH;
-  _tick();
-  _timer = setInterval(_tick, 1000);
-}
-function _tick() {
-  const bar = document.getElementById('refresh-bar');
-  const lbl = document.getElementById('refresh-label');
-  if (bar) {
-    bar.style.transition = _rem === REFRESH ? 'none' : 'width 1s linear';
-    bar.style.width = (_rem / REFRESH * 100) + '%';
+// ── real-time ticker (never stopped) ─────────────────────────────────────────
+const REFRESH = 60;          // seconds between auto-refreshes
+let lastLoadedAt = null;     // Date.now() of last successful data load
+let refreshing   = false;    // guard against overlapping fetches
+
+setInterval(() => {
+  if (!lastLoadedAt) return;
+  const sec = Math.floor((Date.now() - lastLoadedAt) / 1000);
+
+  // "Updated Xs ago" — ticks every second
+  const luEl = document.getElementById('last-updated');
+  if (luEl) {
+    if      (sec <  5)  luEl.innerHTML = 'Updated <strong>just now</strong>';
+    else if (sec < 60)  luEl.innerHTML = `Updated <strong>${sec}s ago</strong>`;
+    else                luEl.innerHTML = `Updated <strong>${Math.floor(sec/60)}m ${sec%60}s ago</strong>`;
   }
-  if (lbl) lbl.textContent = `Auto-refresh in ${_rem}s`;
-  if (_rem-- <= 0) { _rem = REFRESH; loadAll(false); }
-}
+
+  // countdown label + bar
+  const remain = Math.max(0, REFRESH - sec);
+  const lbl = document.getElementById('refresh-label');
+  const bar = document.getElementById('refresh-bar');
+  if (lbl) lbl.textContent = remain > 0 ? `Refreshing in ${remain}s` : 'Refreshing…';
+  if (bar) {
+    bar.style.transition = 'width 1s linear';
+    bar.style.width = (remain / REFRESH * 100) + '%';
+  }
+
+  // auto-trigger
+  if (sec >= REFRESH && !refreshing) loadAll(false);
+}, 1000);
 
 // ── date helpers ──────────────────────────────────────────────────────────────
 function today()      { return new Date().toISOString().slice(0,10); }
 function monthStart() { const d=new Date(); d.setDate(1); return d.toISOString().slice(0,10); }
-function nowStr()     {
-  return new Date().toLocaleTimeString('en-GB',
-    {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
 
 document.getElementById('f-start').value = monthStart();
 document.getElementById('f-end').value   = today();
@@ -269,17 +276,28 @@ function params() {
 }
 
 // ── load all ─────────────────────────────────────────────────────────────────
-async function loadAll(resetTimer=true) {
-  if (resetTimer) startRefresh();
+async function loadAll(auto=false) {
+  if (refreshing) return;
+  refreshing = true;
+
+  // reset bar to full immediately so it starts draining again
+  const bar = document.getElementById('refresh-bar');
+  if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; }
+
   const p = params();
-  const [d1, d2] = await Promise.all([
-    fetch('/api/dashboard?' + p).then(r=>r.json()).catch(()=>({})),
-    fetch('/api/analytics?'  + p).then(r=>r.json()).catch(()=>({})),
-  ]);
-  if (!d1.error && d1.kpis) renderMain(d1);
-  if (!d2.error)             renderAnalytics(d2);
-  const el = document.getElementById('last-updated');
-  if (el) el.innerHTML = `Updated <strong>${nowStr()}</strong>`;
+  try {
+    const [d1, d2] = await Promise.all([
+      fetch('/api/dashboard?' + p).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/analytics?'  + p).then(r=>r.json()).catch(()=>({})),
+    ]);
+    if (!d1.error && d1.kpis) renderMain(d1);
+    if (!d2.error)             renderAnalytics(d2);
+  } finally {
+    lastLoadedAt = Date.now();
+    refreshing   = false;
+    const luEl = document.getElementById('last-updated');
+    if (luEl) luEl.innerHTML = 'Updated <strong>just now</strong>';
+  }
 }
 
 // ── main render ───────────────────────────────────────────────────────────────
@@ -471,6 +489,6 @@ function renderAnalytics(d) {
 }
 
 // ── kick off ──────────────────────────────────────────────────────────────────
-loadAll(true);
+loadAll();
 </script>
 {% endblock %}
