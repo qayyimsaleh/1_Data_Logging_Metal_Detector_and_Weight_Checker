@@ -122,28 +122,16 @@
   </div>
 </div>
 
-<!-- ── Section: Hourly ── -->
-<div class="dash-section-label anim-in d3">Hourly Distribution</div>
-<div class="chart-card anim-in d3" style="margin-bottom:10px">
-  <div style="height:100px"><canvas id="hourly-chart"></canvas></div>
-</div>
-
-<!-- ── Section: Weight Performance ── -->
-<div class="dash-section-label anim-in d4">Weight Performance Chart
-  <span style="font-weight:400;font-size:10px;color:var(--text3);margin-left:10px">
-    Wick = Min/Max &nbsp;·&nbsp; Body = Q1–Q3 spread &nbsp;·&nbsp;
-    <span style="color:#30D158">■</span> FPY≥95%
-    <span style="color:#FF9F0A;margin-left:4px">■</span> 80–95%
-    <span style="color:#FF453A;margin-left:4px">■</span> &lt;80%
-  </span>
-  <span style="margin-left:auto;display:flex;gap:6px">
-    <span id="candle-tooltip" style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums"></span>
-    <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().fitContent()">Fit</button>
-    <button class="btn btn-ghost btn-sm" onclick="if(candleChart)candleChart.timeScale().resetTimeScale()">Reset</button>
-  </span>
-</div>
-<div class="chart-card anim-in d4" style="margin-bottom:10px">
-  <div id="trading-chart" style="height:260px;border-radius:var(--r-sm);overflow:hidden"></div>
+<!-- ── Section: Weight + Hourly ── -->
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px" class="anim-in d4">
+  <div class="chart-card">
+    <div class="chart-card-title">Weight Trend — Avg / Min / Max per Session (g)</div>
+    <div style="height:150px"><canvas id="weight-trend"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-title">Hourly Distribution</div>
+    <div style="height:150px"><canvas id="hourly-chart"></canvas></div>
+  </div>
 </div>
 
 <!-- ── Section: Sessions ── -->
@@ -175,7 +163,6 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 // ── chart registry ────────────────────────────────────────────────────────────
 const charts = {};
@@ -205,10 +192,10 @@ function mkChart(id, cfg) {
 const C = {
   accent:'#0A84FF', green:'#30D158', red:'#FF453A', orange:'#FF9F0A',
   blue:'#5AC8FA', purple:'#BF5AF2',
-  text2:'rgba(226,226,240,0.65)', text3:'rgba(226,226,240,0.35)',
-  sep:'#1e1e36', sep2:'#252540',
+  text2:'rgba(235,235,245,0.60)', text3:'rgba(235,235,245,0.30)',
+  sep:'rgba(84,84,88,0.25)',
 };
-const gridOpts  = { color: '#1c1c2e' };
+const gridOpts  = { color: 'rgba(84,84,88,0.18)' };
 const tickOpts  = { color: C.text3, font:{size:10} };
 const baseScales = {
   x:{ ticks:tickOpts, grid:gridOpts },
@@ -428,7 +415,27 @@ function renderAnalytics(d) {
       plugins:noLegend }
   });
 
-  renderTradingChart(d.candles??[]);
+  // Weight trend — avg/min/max per session
+  mkChart('weight-trend', {
+    type:'line',
+    data:{ labels: d.weight_trend?.map(x=>x.label)??[],
+           datasets:[
+             {label:'Avg', data:d.weight_trend?.map(x=>x.avg)??[],
+              borderColor:C.accent, backgroundColor:'rgba(10,132,255,0.08)',
+              fill:true, tension:0.35, pointRadius:3, pointHoverRadius:5,
+              pointBackgroundColor:C.accent, borderWidth:2},
+             {label:'Max', data:d.weight_trend?.map(x=>x.max)??[],
+              borderColor:'rgba(255,69,58,.4)', tension:0.35,
+              pointRadius:0, borderDash:[4,3], fill:false, borderWidth:1},
+             {label:'Min', data:d.weight_trend?.map(x=>x.min)??[],
+              borderColor:'rgba(255,159,10,.4)', tension:0.35,
+              pointRadius:0, borderDash:[4,3], fill:false, borderWidth:1},
+           ]},
+    options:{ animation:chartAnim, responsive:true, maintainAspectRatio:false,
+      scales:baseScales,
+      plugins:{ legend:{ labels:{color:C.text2, font:{size:11},
+        boxWidth:12, boxHeight:2} } } }
+  });
 
   const tb = document.getElementById('top-body');
   tb.innerHTML = !d.top_sessions?.length
@@ -442,100 +449,7 @@ function renderAnalytics(d) {
       </tr>`).join('');
 }
 
-// ── TradingView candlestick ───────────────────────────────────────────────────
-let candleChart = null, _cSeries = null, _vSeries = null, _avgSeries = null;
 
-function _candleData(c) {
-  return { time:c.time, open:c.open, high:c.high, low:c.low, close:c.close,
-           color:c.color, wickColor:c.color, borderColor:c.color };
-}
-function _volData(c) {
-  return { time:c.time, value:c.volume,
-    color:c.color==='#30D158'?'rgba(48,209,88,0.3)'
-         :c.color==='#FF9F0A'?'rgba(255,159,10,0.3)':'rgba(255,69,58,0.3)' };
-}
-
-function renderTradingChart(candles) {
-  const container = document.getElementById('trading-chart');
-  if (!container || typeof LightweightCharts === 'undefined') return;
-
-  if (!candles.length) {
-    if (candleChart) { candleChart.remove(); candleChart=null; _cSeries=null; _vSeries=null; _avgSeries=null; }
-    container.innerHTML = `<div class="state-box" style="height:260px"><span class="state-icon">◎</span>No weight data</div>`;
-    return;
-  }
-
-  // ── In-place data update (no rebuild, no flicker) ─────────────────────────
-  if (candleChart && _cSeries && _vSeries && _avgSeries) {
-    _cSeries.setData(candles.map(_candleData));
-    _vSeries.setData(candles.map(_volData));
-    _avgSeries.setData(candles.map(c=>({time:c.time, value:c.avg})));
-    candleChart.timeScale().fitContent();
-    return;
-  }
-
-  // ── First-time initialization ─────────────────────────────────────────────
-  if (candleChart) { candleChart.remove(); candleChart = null; }
-  candleChart = LightweightCharts.createChart(container, {
-    width: container.clientWidth, height: container.clientHeight || 260,
-    layout: { background:{type:'solid',color:'transparent'},
-              textColor:'rgba(226,226,240,0.4)',
-              fontFamily:"'JetBrains Mono','Cascadia Code','Fira Code','Courier New',monospace",
-              fontSize:10 },
-    grid: { vertLines:{color:'#161622',style:1},
-            horzLines:{color:'#161622',style:1} },
-    crosshair: { mode:LightweightCharts.CrosshairMode.Normal,
-      vertLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'},
-      horzLine:{color:'rgba(10,132,255,0.5)',width:1,style:0,labelBackgroundColor:'#0A84FF'} },
-    rightPriceScale: { borderColor:'rgba(84,84,88,0.3)',
-                       scaleMargins:{top:0.08,bottom:0.28} },
-    timeScale: { borderColor:'rgba(84,84,88,0.3)', timeVisible:true, secondsVisible:false },
-    handleScroll:true, handleScale:true,
-  });
-
-  // store refs so future refreshes can update without rebuild
-  _cSeries = candleChart.addCandlestickSeries({
-    upColor:'#30D158', downColor:'#FF453A',
-    borderUpColor:'#30D158', borderDownColor:'#FF453A',
-    wickUpColor:'#30D158', wickDownColor:'#FF453A',
-    priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
-  });
-  _vSeries = candleChart.addHistogramSeries({
-    color:'rgba(10,132,255,0.3)', priceFormat:{type:'volume',precision:0},
-    priceScaleId:'vol',
-  });
-  candleChart.priceScale('vol').applyOptions({ scaleMargins:{top:0.78,bottom:0} });
-  _avgSeries = candleChart.addLineSeries({
-    color:'rgba(90,200,250,0.5)', lineWidth:1,
-    lineStyle:LightweightCharts.LineStyle.Dashed,
-    priceFormat:{type:'custom', formatter:v=>v.toLocaleString()+' g'},
-  });
-
-  _cSeries.setData(candles.map(_candleData));
-  _vSeries.setData(candles.map(_volData));
-  _avgSeries.setData(candles.map(c=>({time:c.time, value:c.avg})));
-  candleChart.timeScale().fitContent();
-
-  const tip = document.getElementById('candle-tooltip');
-  candleChart.subscribeCrosshairMove(param => {
-    if (!tip) return;
-    if (!param.point || !param.seriesData?.size) { tip.innerHTML=''; return; }
-    const bar = param.seriesData.get(_cSeries);
-    const meta = candles.find(c=>c.time===(param.time??0));
-    if (bar && meta) {
-      const col = meta.rate>=95?'#30D158':meta.rate>=80?'#FF9F0A':'#FF453A';
-      tip.innerHTML =
-        `<span style="color:${col};font-weight:700">${meta.rate}% FPY</span>` +
-        ` · <strong>${meta.lot}</strong>` +
-        ` · H:<strong>${bar.high.toLocaleString()}</strong>` +
-        ` A:<strong>${meta.avg.toLocaleString()}</strong>` +
-        ` L:<strong>${bar.low.toLocaleString()}</strong> g` +
-        ` · <span style="color:${C.text3}">${meta.volume} bags</span>`;
-    }
-  });
-  new ResizeObserver(()=>{ if(candleChart) candleChart.applyOptions({width:container.clientWidth}); })
-    .observe(container);
-}
 
 loadAll();
 </script>
