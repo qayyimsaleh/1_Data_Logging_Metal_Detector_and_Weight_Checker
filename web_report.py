@@ -79,6 +79,14 @@ def get_machines():
     except Exception:
         return []
 
+def get_distinct(column):
+    sql = f"SELECT DISTINCT {column} FROM production_session WHERE {column} IS NOT NULL AND {column} <> '' ORDER BY {column}"
+    try:
+        r = db.query(sql)
+        return [str(row[0]) for row in r] if r else []
+    except Exception:
+        return []
+
 def run_report(machine, start, end, lot, batch, rtype):
     return db.call_sp("sp_GetProductionReport", [
         machine or None, start or None, end or None,
@@ -224,7 +232,10 @@ def dashboard():
 
 @app.route('/reports')
 def reports_page():
-    return render_template('reports.html', machines=get_machines(),
+    return render_template('reports.html',
+                           machines=get_machines(),
+                           lot_numbers=get_distinct('lot_no'),
+                           batch_numbers=get_distinct('bag_batch_no'),
                            title=APP_TITLE, version=APP_VERSION, active='reports',
                            today=datetime.now().strftime('%Y-%m-%d'),
                            month_start=datetime.now().strftime('%Y-%m-01'))

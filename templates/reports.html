@@ -22,12 +22,16 @@
            style="width:100%;margin-bottom:12px">
 
     <label class="fp-label">Lot Number</label>
-    <input id="f-lot" type="text" class="filter-input" placeholder="Search..."
-           style="width:100%;margin-bottom:12px">
+    <select id="f-lot" class="filter-select" style="width:100%;margin-bottom:12px">
+      <option value="">All Lots</option>
+      {% for l in lot_numbers %}<option value="{{ l }}">{{ l }}</option>{% endfor %}
+    </select>
 
     <label class="fp-label">Batch No</label>
-    <input id="f-batch" type="text" class="filter-input" placeholder="Search..."
-           style="width:100%;margin-bottom:14px">
+    <select id="f-batch" class="filter-select" style="width:100%;margin-bottom:14px">
+      <option value="">All Batches</option>
+      {% for b in batch_numbers %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+    </select>
 
     <label class="fp-label">Report Type</label>
     <div class="radio-group">
