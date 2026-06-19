@@ -22,7 +22,9 @@ from flask import Flask, render_template, request, jsonify, send_file, Response
 from shared_config import DB, make_logger, APP_TITLE, APP_VERSION
 
 try:
-    import pandas as pd
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
     HAS_EXCEL = True
 except ImportError:
     HAS_EXCEL = False
@@ -167,7 +169,7 @@ def api_report():
 @app.route('/export/excel')
 def export_excel():
     if not HAS_EXCEL:
-        return Response("pandas/openpyxl not installed", 500)
+        return Response("openpyxl not installed", 500)
     machine = request.args.get('machine', '')
     start   = request.args.get('start', '')
     end     = request.args.get('end', '')
@@ -176,35 +178,7 @@ def export_excel():
     rtype   = request.args.get('type', 'detailed')
     try:
         rows = run_report(machine, start, end, lot, batch, rtype)
-        cols = list(DETAILED_COLS if rtype == 'detailed' else SUMMARY_COLS)
-        data = []
-        for row in rows:
-            p = []
-            for v in row:
-                if hasattr(v, 'strftime'): p.append(v.strftime('%Y-%m-%d %H:%M:%S'))
-                elif v is None:            p.append('')
-                else:                      p.append(v)
-            data.append(p)
-        if data:
-            nc = len(data[0])
-            if nc > len(cols): cols += [f"Col_{i}" for i in range(len(cols), nc)]
-            else:              cols = cols[:nc]
-        df = pd.DataFrame(data, columns=cols)
-        if rtype == 'detailed' and 'Status' in df.columns:
-            df['Status'] = df['Status'].map({0:'Under',1:'Pass',2:'Over'}).fillna(df['Status'])
-            df['Metal Status'] = df['Metal Status'].map({0:'Pass',1:'Fail'}).fillna(df['Metal Status'])
-        buf   = io.BytesIO()
-        sheet = 'Detailed' if rtype == 'detailed' else 'Summary'
-        with pd.ExcelWriter(buf, engine='openpyxl') as w:
-            df.to_excel(w, sheet_name=sheet, index=False, startrow=1)
-            ws = w.sheets[sheet]
-            ws.cell(row=1, column=1,
-                    value=f"PanCen Production Report — {sheet} — {datetime.now():%Y-%m-%d %H:%M}")
-            for col_cells in ws.columns:
-                maxw = max((len(str(c.value or '')) for c in col_cells), default=8)
-                ws.column_dimensions[col_cells[0].column_letter].width = min(maxw + 3, 45)
-            if rtype != 'detailed' and len(data) > 0:
-                _excel_stats(w, df)
+        buf  = _build_excel(rows, rtype)
         buf.seek(0)
         fname = f"report_{rtype}_{datetime.now():%Y%m%d_%H%M}.xlsx"
         return send_file(buf,
@@ -214,27 +188,86 @@ def export_excel():
         log.error(f"Excel export: {e}")
         return Response(f"Error: {e}", 500)
 
-def _excel_stats(writer, df):
-    def csum(col):
-        return pd.to_numeric(df.get(col, pd.Series()), errors='coerce').sum()
-    tr = csum("Total Readings"); tp = csum("Pass Count")
-    rows = [
-        ["PRODUCTION STATISTICS SUMMARY", ""],
-        ["Generated", datetime.now().strftime('%Y-%m-%d %H:%M:%S')], ["", ""],
-        ["Total Sessions",   len(df)],
-        ["Total Readings",   int(tr)],
-        ["Total Pass",       int(tp)],
-        ["Overall Pass Rate", f"{tp/tr*100:.2f}%" if tr else "0%"],
-        ["Total Under Fail", int(csum("Under Fail"))],
-        ["Total Over Fail",  int(csum("Over Fail"))],
-        ["Total Metal Fail", int(csum("Metal Fail"))], ["", ""],
-        ["Min Weight (g)",   pd.to_numeric(df.get("Min Weight", pd.Series()), errors='coerce').min()],
-        ["Max Weight (g)",   pd.to_numeric(df.get("Max Weight", pd.Series()), errors='coerce').max()],
-        ["Avg Weight (g)",   f"{pd.to_numeric(df.get('Avg Weight',pd.Series()),errors='coerce').mean():.1f}"],
+def _build_excel(rows, rtype):
+    cols = list(DETAILED_COLS if rtype == 'detailed' else SUMMARY_COLS)
+    if rows:
+        nc = len(rows[0])
+        if nc > len(cols): cols += [f"Col_{i}" for i in range(len(cols), nc)]
+        else:              cols = cols[:nc]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Detailed' if rtype == 'detailed' else 'Summary'
+
+    hdr_fill = PatternFill("solid", fgColor="7C5CFC")
+    hdr_font = Font(bold=True, color="FFFFFF")
+    title_font = Font(bold=True, size=12)
+
+    ws.cell(row=1, column=1,
+            value=f"PanCen Production Report — {ws.title} — {datetime.now():%Y-%m-%d %H:%M}")
+    ws.cell(row=1, column=1).font = title_font
+
+    for c, name in enumerate(cols, 1):
+        cell = ws.cell(row=2, column=c, value=name)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    status_map = {0: 'Under', 1: 'Pass', 2: 'Over'}
+    metal_map  = {0: 'Pass',  1: 'Fail'}
+
+    for r_idx, row in enumerate(rows, 3):
+        for c_idx, v in enumerate(row):
+            if rtype == 'detailed':
+                if c_idx == 4: v = status_map.get(v, v)
+                elif c_idx == 5: v = metal_map.get(v, 'N/A') if v is not None else 'N/A'
+            if hasattr(v, 'strftime'): v = v.strftime('%Y-%m-%d %H:%M:%S')
+            elif v is None: v = ''
+            ws.cell(row=r_idx, column=c_idx + 1, value=v)
+
+    for col_cells in ws.columns:
+        maxw = max((len(str(c.value or '')) for c in col_cells if c.row >= 2), default=8)
+        ws.column_dimensions[get_column_letter(col_cells[0].column)].width = min(maxw + 3, 45)
+
+    if rtype != 'detailed' and rows:
+        _excel_stats_sheet(wb, rows)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf
+
+def _excel_stats_sheet(wb, rows):
+    ws = wb.create_sheet("Statistics")
+    total_bags  = sum(int(r[8]  or 0) for r in rows)
+    total_pass  = sum(int(r[9]  or 0) for r in rows)
+    total_under = sum(int(r[10] or 0) for r in rows)
+    total_over  = sum(int(r[11] or 0) for r in rows)
+    total_metal = sum(int(r[12] or 0) for r in rows)
+    pass_rate   = total_pass / total_bags * 100 if total_bags else 0
+    min_w = min((r[14] for r in rows if r[14] is not None), default=0)
+    max_w = max((r[15] for r in rows if r[15] is not None), default=0)
+    avg_vals = [float(r[16]) for r in rows if r[16] is not None]
+    avg_w = sum(avg_vals) / len(avg_vals) if avg_vals else 0
+    data = [
+        ("PRODUCTION STATISTICS SUMMARY", ""),
+        ("Generated", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        ("", ""),
+        ("Total Sessions",    len(rows)),
+        ("Total Readings",    total_bags),
+        ("Total Pass",        total_pass),
+        ("Overall Pass Rate", f"{pass_rate:.2f}%"),
+        ("Total Under Fail",  total_under),
+        ("Total Over Fail",   total_over),
+        ("Total Metal Fail",  total_metal),
+        ("", ""),
+        ("Min Weight (g)",    min_w),
+        ("Max Weight (g)",    max_w),
+        ("Avg Weight (g)",    f"{avg_w:.1f}"),
     ]
-    sdf = pd.DataFrame(rows, columns=["Metric", "Value"])
-    sdf.to_excel(writer, sheet_name="Statistics", index=False)
-    ws = writer.sheets["Statistics"]
+    for r_idx, (metric, value) in enumerate(data, 1):
+        ws.cell(row=r_idx, column=1, value=metric)
+        ws.cell(row=r_idx, column=2, value=value)
+    ws.cell(row=1, column=1).font = Font(bold=True)
     ws.column_dimensions["A"].width = 35
     ws.column_dimensions["B"].width = 25
 
