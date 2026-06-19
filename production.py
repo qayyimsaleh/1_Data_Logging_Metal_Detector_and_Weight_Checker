@@ -848,6 +848,9 @@ class ProductionApp:
         self.log.info("Monitoring loop started...")
         last_w_reconnect = datetime.now()
         last_m_reconnect = datetime.now()
+        last_w_data = datetime.now()   # watchdog: last time WC sent real data
+        last_m_data = datetime.now()   # watchdog: last time MD sent real data
+        SILENT_TIMEOUT = 300           # 5 min with no data → force reconnect
 
         while not self.stop_evt.is_set():
             try:
@@ -859,16 +862,24 @@ class ProductionApp:
                         line = self.w_reader.readline()
                         weight, machine_ts = self._parse_weigher(line)
                         if weight is not None:
+                            last_w_data = datetime.now()
                             now_ts = datetime.now()
                             st = self._calc_status(weight)
                             is_wc_retry = (self.wc_failed is not None)
                             if not is_wc_retry:
                                 self.bag_seq += 1
+                            try:
+                                log_id = self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0]
+                            except Exception as e:
+                                if not is_wc_retry:
+                                    self.bag_seq -= 1  # undo increment — bag was never processed
+                                self.log.error(f"GetNextLogId failed, bag skipped: {e}")
+                                raise  # propagate to outer handler to sleep & retry
                             wr = {
                                 'weight': weight, 'status': st,
                                 'timestamp': machine_ts or now_ts,
                                 'queue_time': now_ts,
-                                'log_id': self.db.call_sp("sp_GetNextLogId", fetch=True)[0][0],
+                                'log_id': log_id,
                                 'bag_seq': self.wc_failed['bag_seq'] if is_wc_retry else self.bag_seq}
                             self.root.after(0, self._disp_wc, dict(wr), is_wc_retry)
                             if st == 1:  # PASS (new or retry cleared)
@@ -905,6 +916,7 @@ class ProductionApp:
                             # the conveyor heading to MD and still need to be matched and logged.
                             self.m_queue.clear()
                             self.wc_failed = None
+                            last_w_data = datetime.now()  # reset watchdog on reconnect
                             self.log.info("WC reconnected; MD queue cleared, WC transit queue preserved")
                         last_w_reconnect = now
 
@@ -915,6 +927,7 @@ class ProductionApp:
                             line = self.m_reader.readline()
                             result = self._parse_metal(line)
                             if result[0] is not None:
+                                last_m_data = datetime.now()
                                 metal_status, metal_value, ts = result
                                 self.m_queue.append({
                                     'status': metal_status, 'value': metal_value, 'timestamp': ts})
@@ -928,7 +941,8 @@ class ProductionApp:
                         now = datetime.now()
                         if (now - last_m_reconnect).total_seconds() >= 5:
                             self.log.info("M reconnecting...")
-                            self._conn_m()
+                            if self._conn_m():
+                                last_m_data = datetime.now()  # reset watchdog on reconnect
                             last_m_reconnect = now
 
                 # --- Match & process ---
@@ -940,6 +954,18 @@ class ProductionApp:
                 if (now - self.last_match_debug).total_seconds() > 30:
                     self.log.info(f"Queues: W={len(self.w_queue)} M={len(self.m_queue)}")
                     self.last_match_debug = now
+
+                # --- Silent-disconnect watchdog ---
+                # If socket appears connected but no data in SILENT_TIMEOUT seconds,
+                # the remote machine likely dropped without sending FIN (cable pulled etc.)
+                if self.running and self.w_sock:
+                    if (now - last_w_data).total_seconds() > SILENT_TIMEOUT:
+                        self.log.warning(f"WC silent for >{SILENT_TIMEOUT}s — forcing reconnect")
+                        self._disc_w(); last_w_data = now
+                if self.running and self.metal_ip and self.m_sock:
+                    if (now - last_m_data).total_seconds() > SILENT_TIMEOUT:
+                        self.log.warning(f"MD silent for >{SILENT_TIMEOUT}s — forcing reconnect")
+                        self._disc_m(); last_m_data = now
 
                 time.sleep(0.01)
             except Exception as e:
