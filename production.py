@@ -288,24 +288,8 @@ class ProductionApp:
         ttk.Button(btm, text="Logout", command=self._logout, style="Ghost.TButton").pack(side="right")
 
     def _launch_reports(self):
-        import subprocess, sys
-        if getattr(sys, 'frozen', False):
-            # PyInstaller exe — look for report.exe alongside main exe
-            d = os.path.dirname(sys.executable)
-            rp = os.path.join(d, "report.exe")
-            if os.path.exists(rp):
-                subprocess.Popen([rp])
-            else:
-                messagebox.showwarning("Not Found",
-                    "report.exe not found next to production.exe.\n"
-                    "Build report.py separately with PyInstaller.")
-        else:
-            d = os.path.dirname(os.path.abspath(__file__))
-            rp = os.path.join(d, "report.py")
-            if os.path.exists(rp):
-                subprocess.Popen([sys.executable, rp])
-            else:
-                messagebox.showwarning("Not Found", f"report.py not found in:\n{d}")
+        import webbrowser
+        webbrowser.open("http://192.168.61.36:5001/")
 
     # ═══════════════ CONFIG ═══════════════
     def _show_config(self):
